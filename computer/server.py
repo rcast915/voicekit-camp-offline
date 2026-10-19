@@ -15,6 +15,9 @@ PERSONALITIES live in prompts/ as plain text files:
 Edit and save a file — the next question uses the new prompt.  No restart needed.
 Changing a Pi's prompt also wipes that Pi's conversation memory.
 
+EDITOR: open http://localhost:8000 on this computer to edit personalities in a
+browser and try test questions.  It only answers requests from this computer.
+
 SETUP (once, on the computer):
     1. Install Ollama (https://ollama.com), then:
            ollama pull llama3.2:3b
@@ -33,6 +36,7 @@ import logging
 import os
 import re
 import threading
+import time
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -57,6 +61,7 @@ MAX_REPLY_TOKENS  = 100
 MAX_HISTORY_TURNS = 10              # Question/answer pairs remembered per Pi
 
 PROMPTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "prompts")
+EDITOR_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "editor.html")
 
 # --- Safety prompt (appended to every personality; students can't remove it)
 MASTER_PROMPT = (
@@ -127,6 +132,43 @@ def load_prompt(pi_name):
     return "You are a friendly camp helper."
 
 
+def valid_name(name):
+    """Only allow simple names so nothing can escape the prompts folder."""
+    return bool(re.fullmatch(r"[\w-]+", name or ""))
+
+
+def list_prompts():
+    """All personality files as [{"name", "text"}], default first."""
+    names = sorted(
+        f[:-4] for f in os.listdir(PROMPTS_DIR)
+        if f.endswith(".txt") and valid_name(f[:-4]) and f != "default.txt"
+    )
+    prompts = []
+    for name in ["default"] + names:
+        path = os.path.join(PROMPTS_DIR, name + ".txt")
+        text = ""
+        if os.path.isfile(path):
+            with open(path, encoding="utf-8") as f:
+                text = f.read()
+        prompts.append({"name": name, "text": text})
+    return prompts
+
+
+def save_prompt(name, text):
+    with open(os.path.join(PROMPTS_DIR, name + ".txt"), "w", encoding="utf-8") as f:
+        f.write(text.strip() + "\n")
+
+
+def delete_prompt(name):
+    path = os.path.join(PROMPTS_DIR, name + ".txt")
+    if os.path.isfile(path):
+        os.remove(path)
+
+
+# --- Pis that have talked to this server (shown in the editor) -----------
+_seen_pis = {}      # pi_name -> last time it connected (time.time())
+
+
 # =========================================================================
 #  LOCAL LLM (Ollama)
 # =========================================================================
@@ -169,6 +211,31 @@ def reset_conversation(pi_name):
         _conversations.pop(pi_name, None)
 
 
+def generate_reply(prompt, history, question):
+    """Run the model and the safety check.
+
+    Returns (reply, ok).  ok is False for errors and blocked replies, which
+    should not be remembered in the conversation.
+    """
+    messages = (
+        [{"role": "system", "content": prompt + "\n\n" + MASTER_PROMPT}]
+        + history
+        + [{"role": "user", "content": question}]
+    )
+
+    try:
+        reply = ollama_chat(CHAT_MODEL, messages, MAX_REPLY_TOKENS).strip('"')
+    except Exception as e:
+        logging.error("Ollama error: %s", e)
+        return "I can't think right now. Please try again.", False
+
+    if not is_safe(question, reply):
+        logging.warning("Blocked reply to: %s", question)
+        return REFUSAL, False
+
+    return reply, True
+
+
 def ask(pi_name, question):
     prompt = load_prompt(pi_name)
 
@@ -180,21 +247,9 @@ def ask(pi_name, question):
             _conversations[pi_name] = convo
         history = list(convo["messages"])
 
-    messages = (
-        [{"role": "system", "content": prompt + "\n\n" + MASTER_PROMPT}]
-        + history
-        + [{"role": "user", "content": question}]
-    )
-
-    try:
-        reply = ollama_chat(CHAT_MODEL, messages, MAX_REPLY_TOKENS).strip('"')
-    except Exception as e:
-        logging.error("Ollama error: %s", e)
-        return "I can't think right now. Please try again."
-
-    if not is_safe(question, reply):
-        logging.warning("[%s] Blocked reply to: %s", pi_name, question)
-        return REFUSAL
+    reply, ok = generate_reply(prompt, history, question)
+    if not ok:
+        return reply
 
     with _conversations_lock:
         convo["messages"] += [
@@ -205,52 +260,84 @@ def ask(pi_name, question):
 
     return reply
 
-
 # =========================================================================
 #  HTTP SERVER
 #
+#  For the Pis:
 #  POST /ask    body = WAV audio      -> {"heard", "command", "reply"}
 #  POST /reset  (Pi just booted)      -> {"ok": true}
 #  GET  /health                       -> {"ok": true}
+#  Every Pi request carries an X-Pi-Name header (the Pi's hostname).
 #
-#  Every request carries an X-Pi-Name header (the Pi's hostname).
+#  For the personality editor (only from this computer):
+#  GET    /                           -> editor.html
+#  GET    /api/prompts                -> {"prompts": [...], "pis": [...]}
+#  POST   /api/prompts/<name>         body {"text"}     -> save
+#  DELETE /api/prompts/<name>                           -> delete (not default)
+#  POST   /api/try                    body {"prompt", "question"} -> {"reply"}
 # =========================================================================
 
 class Handler(BaseHTTPRequestHandler):
 
     def _pi_name(self):
         name = self.headers.get("X-Pi-Name", "")
-        # Only allow simple names so it can't escape the prompts folder
-        return name if re.fullmatch(r"[\w-]+", name) else "default"
+        return name if valid_name(name) else "default"
 
-    def _send_json(self, data, status=200):
-        body = json.dumps(data).encode("utf-8")
+    def _is_local(self):
+        return self.client_address[0] in ("127.0.0.1", "::1")
+
+    def _read_body(self):
+        length = int(self.headers.get("Content-Length", 0))
+        return self.rfile.read(length)
+
+    def _send(self, body, content_type, status=200):
         self.send_response(status)
-        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(body)
+
+    def _send_json(self, data, status=200):
+        self._send(json.dumps(data).encode("utf-8"), "application/json", status)
+
+    # --- Routing -----------------------------------------------------------
 
     def do_GET(self):
         if self.path == "/health":
             self._send_json({"ok": True})
+        elif self.path == "/" or self.path.startswith("/api/"):
+            self._editor("GET")
         else:
             self._send_json({"error": "not found"}, 404)
 
     def do_POST(self):
-        pi_name = self._pi_name()
-        length = int(self.headers.get("Content-Length", 0))
-        body = self.rfile.read(length)
-
-        if self.path == "/reset":
-            reset_conversation(pi_name)
-            logging.info("[%s] Connected — conversation reset.", pi_name)
-            self._send_json({"ok": True})
-            return
-
-        if self.path != "/ask":
+        if self.path.startswith("/api/"):
+            self._editor("POST")
+        elif self.path == "/reset":
+            self._pi_reset()
+        elif self.path == "/ask":
+            self._pi_ask()
+        else:
             self._send_json({"error": "not found"}, 404)
-            return
+
+    def do_DELETE(self):
+        self._editor("DELETE")
+
+    # --- Pi requests -------------------------------------------------------
+
+    def _pi_reset(self):
+        pi_name = self._pi_name()
+        self._read_body()
+        _seen_pis[pi_name] = time.time()
+        reset_conversation(pi_name)
+        logging.info("[%s] Connected — conversation reset.", pi_name)
+        self._send_json({"ok": True})
+
+    def _pi_ask(self):
+        pi_name = self._pi_name()
+        body = self._read_body()
+        _seen_pis[pi_name] = time.time()
 
         heard = transcribe(body)
         if not heard:
@@ -267,6 +354,64 @@ class Handler(BaseHTTPRequestHandler):
         logging.info("[%s] Reply: %s", pi_name, reply)
         self._send_json({"heard": heard, "command": None, "reply": reply})
 
+    # --- Personality editor ------------------------------------------------
+
+    def _editor(self, method):
+        if not self._is_local():
+            self._send_json({"error": "The editor only works on the server computer."}, 403)
+            return
+
+        if method == "GET" and self.path == "/":
+            with open(EDITOR_FILE, "rb") as f:
+                self._send(f.read(), "text/html; charset=utf-8")
+            return
+
+        if method == "GET" and self.path == "/api/prompts":
+            own = {p["name"] for p in list_prompts()}
+            pis = [
+                {"name": name, "seconds_ago": int(time.time() - seen),
+                 "has_own": name in own}
+                for name, seen in sorted(_seen_pis.items())
+            ]
+            self._send_json({"prompts": list_prompts(), "pis": pis})
+            return
+
+        try:
+            data = json.loads(self._read_body() or b"{}")
+        except ValueError:
+            self._send_json({"error": "Bad JSON"}, 400)
+            return
+
+        if method == "POST" and self.path == "/api/try":
+            question = (data.get("question") or "").strip()
+            if not question:
+                self._send_json({"error": "Type a question first."}, 400)
+                return
+            reply, _ = generate_reply((data.get("prompt") or "").strip(), [], question)
+            self._send_json({"reply": reply})
+            return
+
+        if self.path.startswith("/api/prompts/"):
+            name = self.path[len("/api/prompts/"):]
+            if not valid_name(name):
+                self._send_json({"error": "Names can only use letters, numbers, - and _."}, 400)
+                return
+            if method == "POST":
+                save_prompt(name, data.get("text") or "")
+                logging.info("Editor saved personality '%s'.", name)
+                self._send_json({"ok": True})
+                return
+            if method == "DELETE":
+                if name == "default":
+                    self._send_json({"error": "The default personality can't be deleted."}, 400)
+                    return
+                delete_prompt(name)
+                logging.info("Editor deleted personality '%s'.", name)
+                self._send_json({"ok": True})
+                return
+
+        self._send_json({"error": "not found"}, 404)
+
     def log_message(self, fmt, *args):
         pass    # Our own logging above is enough
 
@@ -282,6 +427,7 @@ def main():
 
     server = ThreadingHTTPServer((HOST, PORT), Handler)
     logging.info("Listening on port %d. Prompts folder: %s", PORT, PROMPTS_DIR)
+    logging.info("Edit personalities at http://localhost:%d", PORT)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

@@ -20,6 +20,7 @@ Based on [briancasio/voicekit-camp](https://github.com/briancasio/voicekit-camp)
 | `ai_camp_assistant.py` | Pi | Boot animation, hold-to-talk recording, speaks replies, handles voice commands |
 | `voicekit.service` | Pi | systemd unit that starts the assistant at boot |
 | `computer/server.py` | Computer | Speech-to-text, the local AI model and the safety check, served over HTTP on port 8000 |
+| `computer/editor.html` | Computer | Personality editor page, served at http://localhost:8000 |
 | `computer/prompts/` | Computer | Bot personalities: `default.txt`, or `<pi-hostname>.txt` for one Pi |
 | `computer/test_client.py` | Computer | Stands in for a Pi using the computer's own mic and speakers, so you can test without one |
 
@@ -61,7 +62,9 @@ The Pi needs no extra Python packages.
 
 ## Changing a personality
 
-Edit `computer/prompts/default.txt`, or create `computer/prompts/<pi-hostname>.txt` for a single Pi. The next question uses the new prompt, with no restart. Changing a Pi's prompt also clears its conversation memory.
+With the server running, open **http://localhost:8000** on the computer. Pick a personality, edit it and click Save, or try a test question first. Pis that have connected show up in the list, and you can give any of them its own personality. The editor only opens on the server computer itself, so the Pis and other devices on the network can't change prompts.
+
+You can also edit the files directly: `computer/prompts/default.txt`, or `computer/prompts/<pi-hostname>.txt` for a single Pi. The next question uses the new prompt, with no restart. Changing a Pi's prompt also clears its conversation memory.
 
 The server always adds a safety rule to every prompt, so a student's prompt can't remove it.
 

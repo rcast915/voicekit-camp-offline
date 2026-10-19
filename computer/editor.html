@@ -1,0 +1,376 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Voice Kit Personalities</title>
+<style>
+  :root {
+    --bg: #f6f5f1;
+    --panel: #ffffff;
+    --text: #1d1d1b;
+    --muted: #6b6a64;
+    --line: #e2e0d8;
+    --accent: #2f6f4f;
+    --accent-text: #ffffff;
+    --accent-soft: #e4efe8;
+    --danger: #a3362b;
+    --warn: #8a5a00;
+    --field: #fbfbf9;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #161715;
+      --panel: #1f201d;
+      --text: #ecebe6;
+      --muted: #9c9b93;
+      --line: #33342f;
+      --accent: #6cbf91;
+      --accent-text: #0f1a14;
+      --accent-soft: #233229;
+      --danger: #e2776b;
+      --warn: #e0b35a;
+      --field: #191a18;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  }
+  header { padding: 24px 28px 8px; }
+  h1 { font-size: 22px; margin: 0; letter-spacing: -0.01em; }
+  header p { margin: 4px 0 0; color: var(--muted); }
+  .layout {
+    display: grid;
+    grid-template-columns: 260px 1fr;
+    gap: 20px;
+    padding: 16px 28px 32px;
+    max-width: 1100px;
+  }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 16px;
+  }
+  h2 {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+    margin: 0 0 8px;
+  }
+  aside .panel + .panel { margin-top: 16px; }
+  ul { list-style: none; margin: 0; padding: 0; }
+  .item {
+    display: block;
+    width: 100%;
+    text-align: left;
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    padding: 8px 10px;
+    border-radius: 8px;
+    cursor: pointer;
+  }
+  .item:hover { background: var(--field); }
+  .item.active { background: var(--accent-soft); font-weight: 600; }
+  .item small { display: block; color: var(--muted); font-weight: 400; }
+  .pi { padding: 8px 10px; border-top: 1px solid var(--line); }
+  .pi:first-child { border-top: 0; }
+  .pi strong { display: block; }
+  .pi small { color: var(--muted); }
+  .empty { color: var(--muted); font-size: 14px; padding: 4px 10px; }
+  button.btn {
+    font: inherit;
+    font-weight: 600;
+    border-radius: 8px;
+    padding: 8px 14px;
+    border: 1px solid var(--line);
+    background: var(--panel);
+    color: var(--text);
+    cursor: pointer;
+  }
+  button.btn:hover { border-color: var(--muted); }
+  button.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+  button.btn.danger { color: var(--danger); }
+  button.btn.small { padding: 4px 10px; font-size: 13px; margin-top: 6px; }
+  button.btn:disabled { opacity: 0.5; cursor: default; }
+  .title-row { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  .title-row h3 { margin: 0; font-size: 18px; }
+  .who { color: var(--muted); font-size: 14px; }
+  textarea, input[type=text] {
+    width: 100%;
+    font: 15px/1.55 ui-monospace, "SF Mono", Menlo, monospace;
+    color: var(--text);
+    background: var(--field);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 12px;
+  }
+  textarea { min-height: 260px; resize: vertical; margin: 12px 0; }
+  textarea:focus, input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  .actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .status { font-size: 14px; color: var(--muted); }
+  .status.dirty { color: var(--warn); }
+  .status.ok { color: var(--accent); }
+  .status.err { color: var(--danger); }
+  .try { margin-top: 20px; }
+  .try p { margin: 0 0 10px; color: var(--muted); font-size: 14px; }
+  .try-row { display: flex; gap: 10px; }
+  .try-row input { font-family: inherit; }
+  .reply {
+    margin-top: 12px;
+    padding: 12px 14px;
+    border-radius: 8px;
+    background: var(--accent-soft);
+    display: none;
+  }
+  .reply.show { display: block; }
+  .hint { color: var(--muted); font-size: 13px; margin-top: 10px; }
+  @media (max-width: 760px) {
+    header { padding: 20px 16px 4px; }
+    .layout { grid-template-columns: 1fr; padding: 12px 16px 24px; }
+    .try-row { flex-direction: column; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>Voice Kit Personalities</h1>
+  <p>Save a personality and the next question uses it. No restart needed.</p>
+</header>
+
+<div class="layout">
+  <aside>
+    <div class="panel">
+      <h2>Personalities</h2>
+      <ul id="prompt-list"></ul>
+      <button class="btn small" id="new-btn">+ New for a Pi</button>
+    </div>
+    <div class="panel">
+      <h2>Pis that have connected</h2>
+      <ul id="pi-list"></ul>
+    </div>
+  </aside>
+
+  <main class="panel">
+    <div class="title-row">
+      <h3 id="title"></h3>
+      <span class="who" id="who"></span>
+    </div>
+    <textarea id="text" spellcheck="true" placeholder="Role: You are a friendly pirate captain.&#10;Action: Answer questions.&#10;Context: We are sailing the high seas.&#10;Expectation: Keep answers under two sentences."></textarea>
+    <div class="actions">
+      <button class="btn primary" id="save-btn">Save</button>
+      <button class="btn danger" id="delete-btn">Delete</button>
+      <span class="status" id="status"></span>
+    </div>
+    <p class="hint">The safety rules are always added on top of this, so students can't remove them.</p>
+
+    <div class="try">
+      <h2>Try it</h2>
+      <p>Uses the text above, even before you save. Doesn't change any Pi's memory.</p>
+      <div class="try-row">
+        <input type="text" id="question" placeholder="Ask a test question…">
+        <button class="btn" id="ask-btn">Ask</button>
+      </div>
+      <div class="reply" id="reply"></div>
+    </div>
+  </main>
+</div>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  let prompts = {};          // name -> saved text
+  let pis = [];
+  let current = "default";
+
+  function isDirty() {
+    return (prompts[current] || "").trim() !== $("text").value.trim();
+  }
+
+  function setStatus(msg, kind) {
+    $("status").textContent = msg;
+    $("status").className = "status" + (kind ? " " + kind : "");
+  }
+
+  function ago(seconds) {
+    if (seconds < 60) return "just now";
+    if (seconds < 3600) return Math.floor(seconds / 60) + " min ago";
+    return Math.floor(seconds / 3600) + " h ago";
+  }
+
+  function usersOf(name) {
+    if (name !== "default") return pis.some((p) => p.name === name) ? "Used by this Pi" : "Pi hasn't connected yet";
+    const n = pis.filter((p) => !p.has_own).length;
+    return n ? "Used by " + n + " Pi" + (n === 1 ? "" : "s") + " without their own" : "Used by any Pi without its own";
+  }
+
+  function renderList() {
+    const list = $("prompt-list");
+    list.replaceChildren();
+    Object.keys(prompts).forEach((name) => {
+      const li = document.createElement("li");
+      const b = document.createElement("button");
+      b.className = "item" + (name === current ? " active" : "");
+      b.textContent = name === "default" ? "Default" : name;
+      const small = document.createElement("small");
+      small.textContent = name === "default" ? "Every Pi without its own" : "Only this Pi";
+      b.appendChild(small);
+      b.onclick = () => select(name);
+      li.appendChild(b);
+      list.appendChild(li);
+    });
+
+    const piList = $("pi-list");
+    piList.replaceChildren();
+    if (!pis.length) {
+      const li = document.createElement("li");
+      li.className = "empty";
+      li.textContent = "None yet. They show up here once they connect.";
+      piList.appendChild(li);
+    }
+    pis.forEach((pi) => {
+      const li = document.createElement("li");
+      li.className = "pi";
+      const strong = document.createElement("strong");
+      strong.textContent = pi.name;
+      const small = document.createElement("small");
+      small.textContent = (pi.has_own ? "Own personality" : "Uses default") + " · " + ago(pi.seconds_ago);
+      li.append(strong, small);
+      if (!pi.has_own) {
+        const b = document.createElement("button");
+        b.className = "btn small";
+        b.textContent = "Give it its own";
+        b.onclick = () => create(pi.name);
+        li.appendChild(b);
+      }
+      piList.appendChild(li);
+    });
+  }
+
+  function renderEditor() {
+    $("title").textContent = current === "default" ? "Default" : current;
+    $("who").textContent = usersOf(current);
+    $("delete-btn").style.display = current === "default" ? "none" : "";
+    $("reply").classList.remove("show");
+  }
+
+  async function load() {
+    const res = await fetch("/api/prompts");
+    const data = await res.json();
+    prompts = Object.fromEntries(data.prompts.map((p) => [p.name, p.text]));
+    pis = data.pis;
+    if (!(current in prompts)) current = "default";
+  }
+
+  async function select(name) {
+    if (name !== current && isDirty() && !confirm("You have unsaved changes. Discard them?")) return;
+    current = name;
+    $("text").value = prompts[name] || "";
+    setStatus("");
+    renderList();
+    renderEditor();
+  }
+
+  async function create(name) {
+    if (!name) {
+      name = (prompt("The Pi's hostname (letters, numbers, - and _ only):") || "").trim();
+      if (!name) return;
+    }
+    if (!/^[\w-]+$/.test(name)) { alert("Names can only use letters, numbers, - and _."); return; }
+    if (!(name in prompts)) {
+      // Start from the default so there's something to edit
+      await save(name, prompts["default"] || "", true);
+    }
+    await select(name);
+  }
+
+  async function save(name, text, quiet) {
+    const res = await fetch("/api/prompts/" + encodeURIComponent(name), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+    });
+    const data = await res.json();
+    if (!res.ok) { setStatus(data.error || "Couldn't save.", "err"); return false; }
+    await load();
+    renderList();
+    renderEditor();
+    if (!quiet) setStatus("Saved. The next question uses this.", "ok");
+    return true;
+  }
+
+  $("save-btn").onclick = () => save(current, $("text").value);
+
+  $("delete-btn").onclick = async () => {
+    if (!confirm('Delete "' + current + '"? That Pi will go back to the default personality.')) return;
+    const res = await fetch("/api/prompts/" + encodeURIComponent(current), { method: "DELETE" });
+    if (!res.ok) { setStatus((await res.json()).error || "Couldn't delete.", "err"); return; }
+    await load();
+    current = "default";
+    $("text").value = prompts.default || "";
+    renderList();
+    renderEditor();
+    setStatus("Deleted.", "ok");
+  };
+
+  $("new-btn").onclick = () => create();
+
+  $("text").addEventListener("input", () => {
+    if (isDirty()) setStatus("Unsaved changes", "dirty");
+    else setStatus("");
+  });
+
+  document.addEventListener("keydown", (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === "s") {
+      e.preventDefault();
+      save(current, $("text").value);
+    }
+  });
+
+  async function ask() {
+    const question = $("question").value.trim();
+    if (!question) return;
+    $("ask-btn").disabled = true;
+    $("ask-btn").textContent = "Thinking…";
+    try {
+      const res = await fetch("/api/try", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: $("text").value, question }),
+      });
+      const data = await res.json();
+      $("reply").textContent = data.reply || data.error;
+      $("reply").classList.add("show");
+    } catch (err) {
+      $("reply").textContent = "Couldn't reach the server. Is server.py still running?";
+      $("reply").classList.add("show");
+    } finally {
+      $("ask-btn").disabled = false;
+      $("ask-btn").textContent = "Ask";
+    }
+  }
+
+  $("ask-btn").onclick = ask;
+  $("question").addEventListener("keydown", (e) => { if (e.key === "Enter") ask(); });
+
+  window.addEventListener("beforeunload", (e) => { if (isDirty()) e.preventDefault(); });
+
+  // Keep the list of connected Pis fresh without touching the text box
+  setInterval(async () => {
+    try { await load(); renderList(); $("who").textContent = usersOf(current); } catch (err) {}
+  }, 5000);
+
+  load().then(() => {
+    $("text").value = prompts[current] || "";
+    renderList();
+    renderEditor();
+  });
+</script>
+</body>
+</html>
