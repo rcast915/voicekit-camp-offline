@@ -1,0 +1,4 @@
+# For the instructor's computer (Python 3.9+), not the Pi.
+# Also install Ollama separately: https://ollama.com
+faster-whisper
+sounddevice     # Only for test_client.py (testing with this computer's mic)

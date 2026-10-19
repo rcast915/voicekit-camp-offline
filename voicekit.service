@@ -1,0 +1,45 @@
+# =========================================================================
+#  voicekit.service  —  Systemd unit for AI Summer Camp Voice Kit
+#
+#  INSTALLATION (run these commands on each Raspberry Pi):
+#
+#    # 1. Copy the service file:
+#    sudo cp /home/pi/voicekit-camp/voicekit.service /etc/systemd/system/voicekit.service
+#
+#    # 2. Reload systemd so it picks up the new file:
+#    sudo systemctl daemon-reload
+#
+#    # 3. Enable auto-start on every boot:
+#    sudo systemctl enable voicekit.service
+#
+#    # 4. Start it right now (to test without rebooting):
+#    sudo systemctl start voicekit.service
+#
+#    # 5. Check status / view logs:
+#    sudo systemctl status voicekit.service
+#    journalctl -u voicekit.service -f
+#
+#  IMPORTANT: This service uses Type=oneshot with RemainAfterExit=yes.
+#  If the script fails, it will NOT restart automatically.  This is
+#  intentional — an infinite restart loop would burn Google Cloud API
+#  credits.  Check /home/pi/error.log to diagnose failures.
+# =========================================================================
+
+[Unit]
+Description=AI Camp Voice Kit Assistant
+Wants=network-online.target
+After=network-online.target
+Wants=systemd-timesyncd.service
+After=systemd-timesyncd.service
+
+[Service]
+Type=simple
+User=pi
+Environment=DISPLAY=:0
+ExecStart=/bin/bash /home/pi/voicekit_boot.sh
+Restart=no
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

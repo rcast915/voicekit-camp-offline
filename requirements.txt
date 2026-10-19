@@ -1,0 +1,4 @@
+# Raspberry Pi side: no extra packages needed.
+# The Pi only uses the AIY library (preinstalled on the Voice Kit image)
+# and the Python standard library.  Speech-to-text and the AI model run
+# on the instructor's computer — see computer/requirements.txt.
