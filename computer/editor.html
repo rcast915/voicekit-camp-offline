@@ -4,224 +4,556 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Voice Kit Personalities</title>
+<!-- Everything is inline (no web fonts or CDNs) so this works with no internet. -->
 <style>
+  /* Red, white and black only.  --accent is the red; --accent-2 a deeper crimson. */
   :root {
-    --bg: #f6f5f1;
-    --panel: #ffffff;
-    --text: #1d1d1b;
-    --muted: #6b6a64;
-    --line: #e2e0d8;
-    --accent: #2f6f4f;
-    --accent-text: #ffffff;
-    --accent-soft: #e4efe8;
-    --danger: #a3362b;
-    --warn: #8a5a00;
-    --field: #fbfbf9;
+    --bg: #09090a;
+    --bg-glow-1: rgba(230, 20, 45, 0.18);
+    --bg-glow-2: rgba(255, 255, 255, 0.05);
+    --grid: rgba(255, 255, 255, 0.035);
+    --panel: rgba(255, 255, 255, 0.03);
+    --panel-solid: #141415;
+    --line: rgba(255, 255, 255, 0.1);
+    --text: #f5f5f5;
+    --muted: #9b9b9f;
+    --accent: #ff2e44;
+    --accent-2: #a8001c;
+    --accent-ink: #ffffff;
+    --accent-soft: rgba(255, 46, 68, 0.12);
+    --field: rgba(0, 0, 0, 0.5);
+    --danger: #ff4d5e;
+    --warn: #ff4d5e;
+    --live: #ffffff;
+    --shadow: 0 20px 50px rgba(0, 0, 0, 0.55);
   }
-  @media (prefers-color-scheme: dark) {
+  @media (prefers-color-scheme: light) {
     :root {
-      --bg: #161715;
-      --panel: #1f201d;
-      --text: #ecebe6;
-      --muted: #9c9b93;
-      --line: #33342f;
-      --accent: #6cbf91;
-      --accent-text: #0f1a14;
-      --accent-soft: #233229;
-      --danger: #e2776b;
-      --warn: #e0b35a;
-      --field: #191a18;
+      --bg: #f6f6f6;
+      --bg-glow-1: rgba(217, 4, 41, 0.1);
+      --bg-glow-2: rgba(0, 0, 0, 0.04);
+      --grid: rgba(0, 0, 0, 0.045);
+      --panel: rgba(255, 255, 255, 0.88);
+      --panel-solid: #ffffff;
+      --line: rgba(0, 0, 0, 0.12);
+      --text: #0b0b0b;
+      --muted: #5d5d61;
+      --accent: #d90429;
+      --accent-2: #7a0014;
+      --accent-ink: #ffffff;
+      --accent-soft: rgba(217, 4, 41, 0.08);
+      --field: #ffffff;
+      --danger: #d90429;
+      --warn: #d90429;
+      --live: #0b0b0b;
+      --shadow: 0 18px 40px rgba(0, 0, 0, 0.08);
     }
   }
+
   * { box-sizing: border-box; }
+  html, body { margin: 0; }
   body {
-    margin: 0;
-    background: var(--bg);
+    min-height: 100vh;
+    background:
+      radial-gradient(900px 500px at 10% -10%, var(--bg-glow-1), transparent 60%),
+      radial-gradient(800px 500px at 100% 0%, var(--bg-glow-2), transparent 60%),
+      linear-gradient(var(--grid) 1px, transparent 1px) 0 0 / 32px 32px,
+      linear-gradient(90deg, var(--grid) 1px, transparent 1px) 0 0 / 32px 32px,
+      var(--bg);
     color: var(--text);
     font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
   }
-  header { padding: 24px 28px 8px; }
-  h1 { font-size: 22px; margin: 0; letter-spacing: -0.01em; }
-  header p { margin: 4px 0 0; color: var(--muted); }
+  .rounded { font-family: ui-rounded, "SF Pro Rounded", -apple-system, system-ui, sans-serif; }
+  button { font: inherit; color: inherit; }
+
+  /* ---------- Header ---------- */
+  .top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 28px 28px 8px;
+  }
+  .brand { display: flex; align-items: center; gap: 16px; }
+  h1 { margin: 0; font-size: 26px; letter-spacing: -0.02em; line-height: 1.15; }
+  h1 span {
+    background: linear-gradient(90deg, var(--accent), color-mix(in srgb, var(--accent) 35%, var(--text)));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .top p { margin: 2px 0 0; color: var(--muted); }
+
+  /* The orb mirrors the Voice Kit button LED: slow breathing idle, quick pulse thinking */
+  .orb {
+    --size: 52px;
+    flex: none;
+    width: var(--size);
+    height: var(--size);
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #fff 0 8%, var(--accent) 30%, var(--accent-2) 75%);
+    box-shadow: 0 0 24px var(--accent), 0 0 60px color-mix(in srgb, var(--accent) 40%, transparent), inset 0 -6px 14px rgba(0, 0, 0, 0.35);
+    animation: breathe 3.6s ease-in-out infinite;
+  }
+  .orb.thinking { animation: pulse 0.55s ease-in-out infinite; }
+  .orb.small { --size: 26px; box-shadow: 0 0 12px var(--accent); }
+  @keyframes breathe {
+    0%, 100% { transform: scale(0.94); filter: brightness(0.8); }
+    50%      { transform: scale(1);    filter: brightness(1.15); }
+  }
+  @keyframes pulse {
+    0%, 100% { transform: scale(0.9); filter: brightness(0.75); }
+    50%      { transform: scale(1.05); filter: brightness(1.35); }
+  }
+
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 14px;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    background: var(--panel);
+    backdrop-filter: blur(10px);
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: var(--muted);
+    flex: none;
+  }
+  .dot.live { background: var(--live); box-shadow: 0 0 10px var(--live); }
+  .dot.down { background: var(--danger); box-shadow: 0 0 10px var(--danger); }
+
+  /* ---------- Layout ---------- */
   .layout {
     display: grid;
-    grid-template-columns: 260px 1fr;
+    grid-template-columns: 290px minmax(0, 1fr);
     gap: 20px;
-    padding: 16px 28px 32px;
-    max-width: 1100px;
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 18px 28px 40px;
   }
   .panel {
     background: var(--panel);
     border: 1px solid var(--line);
-    border-radius: 12px;
-    padding: 16px;
+    border-radius: 18px;
+    padding: 18px;
+    backdrop-filter: blur(14px);
+    box-shadow: var(--shadow);
   }
+  aside .panel + .panel, main .panel + .panel { margin-top: 20px; }
   h2 {
-    font-size: 12px;
+    margin: 0 0 12px;
+    font-size: 11.5px;
+    font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.06em;
+    letter-spacing: 0.12em;
     color: var(--muted);
-    margin: 0 0 8px;
   }
-  aside .panel + .panel { margin-top: 16px; }
   ul { list-style: none; margin: 0; padding: 0; }
+
+  /* ---------- Personality list ---------- */
   .item {
-    display: block;
+    display: flex;
+    align-items: center;
+    gap: 12px;
     width: 100%;
     text-align: left;
-    border: 0;
+    border: 1px solid transparent;
     background: none;
-    color: inherit;
-    font: inherit;
-    padding: 8px 10px;
-    border-radius: 8px;
+    padding: 10px 12px;
+    border-radius: 12px;
     cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
   }
-  .item:hover { background: var(--field); }
-  .item.active { background: var(--accent-soft); font-weight: 600; }
-  .item small { display: block; color: var(--muted); font-weight: 400; }
-  .pi { padding: 8px 10px; border-top: 1px solid var(--line); }
-  .pi:first-child { border-top: 0; }
-  .pi strong { display: block; }
-  .pi small { color: var(--muted); }
-  .empty { color: var(--muted); font-size: 14px; padding: 4px 10px; }
-  button.btn {
-    font: inherit;
-    font-weight: 600;
-    border-radius: 8px;
-    padding: 8px 14px;
+  .item:hover { background: var(--accent-soft); }
+  .item.active {
+    background: var(--accent-soft);
+    border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  }
+  .avatar {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+    font-size: 18px;
+    background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 30%, transparent), color-mix(in srgb, var(--accent-2) 30%, transparent));
+  }
+  .item strong { display: block; font-weight: 650; }
+  .item small { display: block; color: var(--muted); font-size: 12.5px; }
+
+  /* ---------- Pi tiles ---------- */
+  .pis { display: grid; gap: 10px; }
+  .pi {
+    padding: 12px;
+    border-radius: 12px;
+    border: 1px solid var(--line);
+    background: var(--field);
+  }
+  .pi-head { display: flex; align-items: center; gap: 8px; }
+  .pi-head strong { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 14px; }
+  .pi small { display: block; color: var(--muted); font-size: 12.5px; margin-top: 2px; }
+  .empty { color: var(--muted); font-size: 13.5px; line-height: 1.45; }
+
+  /* ---------- Buttons ---------- */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border-radius: 10px;
+    padding: 9px 16px;
     border: 1px solid var(--line);
     background: var(--panel);
-    color: var(--text);
+    font-weight: 650;
     cursor: pointer;
+    transition: transform 0.1s, border-color 0.15s, box-shadow 0.15s;
   }
-  button.btn:hover { border-color: var(--muted); }
-  button.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
-  button.btn.danger { color: var(--danger); }
-  button.btn.small { padding: 4px 10px; font-size: 13px; margin-top: 6px; }
-  button.btn:disabled { opacity: 0.5; cursor: default; }
-  .title-row { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
-  .title-row h3 { margin: 0; font-size: 18px; }
-  .who { color: var(--muted); font-size: 14px; }
+  .btn:hover { border-color: var(--muted); }
+  .btn:active { transform: translateY(1px); }
+  .btn.primary {
+    border: 0;
+    color: var(--accent-ink);
+    background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 55%, var(--accent-2)));
+    box-shadow: 0 6px 22px color-mix(in srgb, var(--accent) 35%, transparent);
+  }
+  .btn.primary:hover { box-shadow: 0 8px 30px color-mix(in srgb, var(--accent) 55%, transparent); }
+  .btn.danger { color: var(--danger); }
+  .btn.small { padding: 5px 11px; font-size: 13px; border-radius: 8px; margin-top: 10px; }
+  .btn.ghost { background: none; }
+  .btn:disabled { opacity: 0.55; cursor: default; transform: none; }
+
+  /* ---------- Editor ---------- */
+  .editor-head { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  .editor-head .avatar { width: 46px; height: 46px; font-size: 24px; border-radius: 14px; }
+  .editor-head h3 { margin: 0; font-size: 21px; letter-spacing: -0.01em; }
+  .badge {
+    display: inline-block;
+    margin-top: 2px;
+    font-size: 12.5px;
+    color: var(--muted);
+  }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0 4px; align-items: center; }
+  .chips span { font-size: 12.5px; color: var(--muted); margin-right: 2px; }
+  .chip {
+    border: 1px solid var(--line);
+    background: var(--field);
+    border-radius: 999px;
+    padding: 5px 12px;
+    font-size: 13px;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+  }
+  .chip:hover { border-color: var(--accent); background: var(--accent-soft); }
+  .field { position: relative; margin: 12px 0 14px; }
   textarea, input[type=text] {
     width: 100%;
-    font: 15px/1.55 ui-monospace, "SF Mono", Menlo, monospace;
     color: var(--text);
     background: var(--field);
     border: 1px solid var(--line);
-    border-radius: 8px;
-    padding: 12px;
+    border-radius: 14px;
+    transition: border-color 0.15s, box-shadow 0.15s;
   }
-  textarea { min-height: 260px; resize: vertical; margin: 12px 0; }
-  textarea:focus, input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  textarea {
+    min-height: 230px;
+    resize: vertical;
+    padding: 16px 16px 30px;
+    font: 14.5px/1.65 ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  input[type=text] { padding: 12px 14px; font: inherit; }
+  textarea:focus, input:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 4px var(--accent-soft);
+  }
+  .count {
+    position: absolute;
+    right: 14px;
+    bottom: 10px;
+    font-size: 12px;
+    color: var(--muted);
+    pointer-events: none;
+  }
   .actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-  .status { font-size: 14px; color: var(--muted); }
-  .status.dirty { color: var(--warn); }
-  .status.ok { color: var(--accent); }
-  .status.err { color: var(--danger); }
-  .try { margin-top: 20px; }
-  .try p { margin: 0 0 10px; color: var(--muted); font-size: 14px; }
-  .try-row { display: flex; gap: 10px; }
-  .try-row input { font-family: inherit; }
-  .reply {
-    margin-top: 12px;
-    padding: 12px 14px;
-    border-radius: 8px;
-    background: var(--accent-soft);
-    display: none;
+  .unsaved { font-size: 13.5px; color: var(--warn); display: none; align-items: center; gap: 6px; }
+  .unsaved.show { display: inline-flex; }
+  .unsaved .dot { background: var(--warn); box-shadow: 0 0 8px var(--warn); }
+  .hint { color: var(--muted); font-size: 13px; margin: 14px 0 0; display: flex; gap: 6px; align-items: baseline; }
+  kbd {
+    font: 12px ui-monospace, Menlo, monospace;
+    border: 1px solid var(--line);
+    border-bottom-width: 2px;
+    border-radius: 5px;
+    padding: 0 5px;
   }
-  .reply.show { display: block; }
-  .hint { color: var(--muted); font-size: 13px; margin-top: 10px; }
-  @media (max-width: 760px) {
-    header { padding: 20px 16px 4px; }
-    .layout { grid-template-columns: 1fr; padding: 12px 16px 24px; }
+
+  /* ---------- Try it (chat) ---------- */
+  .try-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+  .try-head p { margin: 0; color: var(--muted); font-size: 13px; }
+  .chat {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    max-height: 340px;
+    overflow-y: auto;
+    padding: 4px 2px 14px;
+  }
+  .chat:empty::before {
+    content: "Ask something to hear how this personality answers.";
+    color: var(--muted);
+    font-size: 13.5px;
+    padding: 18px 0 4px;
+  }
+  .msg { display: flex; gap: 10px; align-items: flex-end; max-width: 86%; animation: rise 0.25s ease-out; }
+  .msg.me { align-self: flex-end; flex-direction: row-reverse; }
+  .bubble {
+    padding: 10px 14px;
+    border-radius: 16px;
+    line-height: 1.45;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+  }
+  .msg.me .bubble {
+    background: linear-gradient(135deg, var(--accent-2), color-mix(in srgb, var(--accent-2) 60%, var(--accent)));
+    color: #fff;
+    border-bottom-right-radius: 5px;
+  }
+  .msg.bot .bubble {
+    background: var(--field);
+    border: 1px solid var(--line);
+    border-bottom-left-radius: 5px;
+  }
+  .msg.bot.blocked .bubble { border-color: color-mix(in srgb, var(--danger) 55%, transparent); }
+  .speak {
+    border: 0;
+    background: none;
+    cursor: pointer;
+    font-size: 15px;
+    opacity: 0.6;
+    padding: 2px;
+  }
+  .speak:hover { opacity: 1; }
+  .typing span {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    margin: 0 2px;
+    border-radius: 50%;
+    background: var(--muted);
+    animation: blink 1s infinite;
+  }
+  .typing span:nth-child(2) { animation-delay: 0.15s; }
+  .typing span:nth-child(3) { animation-delay: 0.3s; }
+  @keyframes blink { 0%, 80%, 100% { opacity: 0.25; } 40% { opacity: 1; } }
+  @keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  .try-row { display: flex; gap: 10px; border-top: 1px solid var(--line); padding-top: 14px; }
+
+  /* ---------- Toast ---------- */
+  .toast {
+    position: fixed;
+    left: 50%;
+    bottom: 28px;
+    transform: translate(-50%, 20px);
+    opacity: 0;
+    pointer-events: none;
+    padding: 11px 18px;
+    border-radius: 12px;
+    background: var(--panel-solid);
+    border: 1px solid var(--line);
+    box-shadow: var(--shadow);
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: opacity 0.2s, transform 0.2s;
+    max-width: calc(100vw - 32px);
+  }
+  .toast.show { opacity: 1; transform: translate(-50%, 0); }
+  .toast.err { color: var(--danger); }
+
+  @media (max-width: 820px) {
+    .top { padding: 20px 16px 4px; }
+    .layout { grid-template-columns: minmax(0, 1fr); padding: 14px 16px 32px; }
+    .msg { max-width: 100%; }
     .try-row { flex-direction: column; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; }
   }
 </style>
 </head>
 <body>
-<header>
-  <h1>Voice Kit Personalities</h1>
-  <p>Save a personality and the next question uses it. No restart needed.</p>
+<header class="top">
+  <div class="brand">
+    <div class="orb" id="orb" aria-hidden="true"></div>
+    <div>
+      <h1 class="rounded">Voice Kit <span>Personalities</span></h1>
+      <p>Save a personality and the next question uses it. No restart needed.</p>
+    </div>
+  </div>
+  <div class="pill" role="status"><span class="dot" id="server-dot"></span><span id="server-text">Connecting…</span></div>
 </header>
 
 <div class="layout">
   <aside>
-    <div class="panel">
+    <section class="panel">
       <h2>Personalities</h2>
       <ul id="prompt-list"></ul>
-      <button class="btn small" id="new-btn">+ New for a Pi</button>
-    </div>
-    <div class="panel">
-      <h2>Pis that have connected</h2>
-      <ul id="pi-list"></ul>
-    </div>
+      <button class="btn small ghost" id="new-btn">+ New for a Pi</button>
+    </section>
+    <section class="panel">
+      <h2>Voice Kits</h2>
+      <ul class="pis" id="pi-list"></ul>
+    </section>
   </aside>
 
-  <main class="panel">
-    <div class="title-row">
-      <h3 id="title"></h3>
-      <span class="who" id="who"></span>
-    </div>
-    <textarea id="text" spellcheck="true" placeholder="Role: You are a friendly pirate captain.&#10;Action: Answer questions.&#10;Context: We are sailing the high seas.&#10;Expectation: Keep answers under two sentences."></textarea>
-    <div class="actions">
-      <button class="btn primary" id="save-btn">Save</button>
-      <button class="btn danger" id="delete-btn">Delete</button>
-      <span class="status" id="status"></span>
-    </div>
-    <p class="hint">The safety rules are always added on top of this, so students can't remove them.</p>
-
-    <div class="try">
-      <h2>Try it</h2>
-      <p>Uses the text above, even before you save. Doesn't change any Pi's memory.</p>
-      <div class="try-row">
-        <input type="text" id="question" placeholder="Ask a test question…">
-        <button class="btn" id="ask-btn">Ask</button>
+  <main>
+    <section class="panel">
+      <div class="editor-head">
+        <div class="avatar" id="title-avatar">✨</div>
+        <div>
+          <h3 class="rounded" id="title"></h3>
+          <span class="badge" id="who"></span>
+        </div>
       </div>
-      <div class="reply" id="reply"></div>
-    </div>
+
+      <div class="chips" id="chips"><span>Start from:</span></div>
+
+      <div class="field">
+        <textarea id="text" spellcheck="true" aria-label="Personality prompt"
+          placeholder="Role: You are a friendly pirate captain.&#10;Action: Answer questions.&#10;Context: We are sailing the high seas.&#10;Expectation: Keep answers under two sentences."></textarea>
+        <span class="count" id="count"></span>
+      </div>
+
+      <div class="actions">
+        <button class="btn primary" id="save-btn">Save personality</button>
+        <button class="btn danger ghost" id="delete-btn">Delete</button>
+        <span class="unsaved" id="unsaved"><span class="dot"></span>Unsaved changes</span>
+      </div>
+      <p class="hint">🛡️ <span>Safety rules are always added on top, so students can't remove them. Press <kbd>⌘</kbd> <kbd>S</kbd> to save.</span></p>
+    </section>
+
+    <section class="panel">
+      <div class="try-head">
+        <h2>Try it</h2>
+        <p>Uses the text above, even before you save. Doesn't change any Pi's memory.</p>
+      </div>
+      <div class="chat" id="chat" aria-live="polite"></div>
+      <div class="try-row">
+        <input type="text" id="question" placeholder="Ask a test question…" aria-label="Test question">
+        <button class="btn primary" id="ask-btn">Ask</button>
+      </div>
+    </section>
   </main>
 </div>
 
+<div class="toast" id="toast" role="status"></div>
+
 <script>
   const $ = (id) => document.getElementById(id);
+  const LIVE_SECONDS = 120;   // A Pi counts as "online" if it connected this recently
+
+  const TEMPLATES = [
+    { emoji: "🧙", label: "Wizard", text:
+      "Role: You are a kind old wizard who has lived for a thousand years.\nAction: Answer questions like you are teaching magic.\nContext: We are in your tower full of spell books.\nExpectation: Mention a made-up spell sometimes. Keep answers under two sentences." },
+    { emoji: "🏴‍☠️", label: "Pirate", text:
+      "Role: You are a cheerful pirate captain.\nAction: Answer questions like you are telling tales from the sea.\nContext: We are sailing the high seas on your ship.\nExpectation: Talk like a pirate and say \"arr\" sometimes. Keep answers under two sentences." },
+    { emoji: "🤖", label: "Robot", text:
+      "Role: You are a friendly robot who is still learning about humans.\nAction: Answer questions and sometimes ask a curious question back.\nContext: You just arrived on Earth from a robot planet.\nExpectation: Say \"beep boop\" now and then. Keep answers under two sentences." },
+    { emoji: "🦖", label: "Dinosaur", text:
+      "Role: You are a T. rex who somehow learned to talk.\nAction: Answer questions from a dinosaur's point of view.\nContext: It is 66 million years ago in the Cretaceous period.\nExpectation: Complain about your tiny arms sometimes. Keep answers under two sentences." },
+    { emoji: "🚀", label: "Astronaut", text:
+      "Role: You are an astronaut living on the International Space Station.\nAction: Answer questions about space and life in orbit.\nContext: You are floating in the station looking down at Earth.\nExpectation: Share a real space fact when you can. Keep answers under two sentences." },
+    { emoji: "🟢", label: "Jedi", text:
+      "Role: You are a wise Jedi Master from the Star Wars universe.\nAction: Answer questions with wisdom and calm.\nContext: You are training a young Padawan at the Jedi Academy.\nExpectation: Use metaphors about the Force. Keep answers under two sentences.\n             Sometimes invert word order like Yoda." },
+    { emoji: "🔴", label: "Sith", text:
+      "Role: You are a dramatic Sith Lord from the Star Wars universe.\nAction: Answer questions with grand, dark, theatrical flair.\nContext: You are training a young apprentice on your own.\nExpectation: Use metaphors about the dark side of the Force. Keep answers under two sentences." },
+  ];
+
   let prompts = {};          // name -> saved text
   let pis = [];
   let current = "default";
+  let toastTimer = null;
 
+  // ---------- Helpers ----------
   function isDirty() {
     return (prompts[current] || "").trim() !== $("text").value.trim();
   }
 
-  function setStatus(msg, kind) {
-    $("status").textContent = msg;
-    $("status").className = "status" + (kind ? " " + kind : "");
+  function el(tag, cls, text) {
+    const e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text !== undefined) e.textContent = text;
+    return e;
+  }
+
+  function toast(msg, isError) {
+    const t = $("toast");
+    t.textContent = (isError ? "⚠️ " : "✓ ") + msg;
+    t.className = "toast show" + (isError ? " err" : "");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { t.className = "toast" + (isError ? " err" : ""); }, 2600);
   }
 
   function ago(seconds) {
     if (seconds < 60) return "just now";
     if (seconds < 3600) return Math.floor(seconds / 60) + " min ago";
-    return Math.floor(seconds / 3600) + " h ago";
+    if (seconds < 86400) return Math.floor(seconds / 3600) + " h ago";
+    return Math.floor(seconds / 86400) + " d ago";
   }
 
-  function usersOf(name) {
-    if (name !== "default") return pis.some((p) => p.name === name) ? "Used by this Pi" : "Pi hasn't connected yet";
+  // Pick an emoji from the personality text so each one feels distinct
+  function emojiFor(text) {
+    const t = (text || "").toLowerCase();
+    const map = [
+      ["sith", "🔴"], ["jedi", "🟢"], ["pirate", "🏴‍☠️"], ["wizard", "🧙"], ["robot", "🤖"],
+      ["dinosaur", "🦖"], ["rex", "🦖"], ["astronaut", "🚀"], ["space", "🚀"], ["dragon", "🐉"],
+      ["cat", "🐱"], ["dog", "🐶"], ["chef", "👨‍🍳"], ["coach", "🏅"], ["detective", "🕵️"],
+      ["knight", "🛡️"], ["princess", "👑"], ["king", "👑"], ["queen", "👑"], ["ghost", "👻"],
+      ["alien", "👽"], ["scientist", "🧪"], ["teacher", "📚"], ["ninja", "🥷"],
+    ];
+    for (const [word, emoji] of map) if (t.includes(word)) return emoji;
+    return "✨";
+  }
+
+  function whoText(name) {
+    if (name !== "default") {
+      const pi = pis.find((p) => p.name === name);
+      return pi ? "Only " + name + " · last seen " + ago(pi.seconds_ago) : "Only " + name + " · hasn't connected yet";
+    }
     const n = pis.filter((p) => !p.has_own).length;
-    return n ? "Used by " + n + " Pi" + (n === 1 ? "" : "s") + " without their own" : "Used by any Pi without its own";
+    return n ? "Used by " + n + " Voice Kit" + (n === 1 ? "" : "s") + " without their own" : "Used by any Voice Kit without its own";
   }
 
+  function setServer(ok, model) {
+    $("server-dot").className = "dot " + (ok ? "live" : "down");
+    $("server-text").textContent = ok ? "Server online · " + model : "Server offline. Is server.py running?";
+  }
+
+  // ---------- Rendering ----------
   function renderList() {
     const list = $("prompt-list");
     list.replaceChildren();
     Object.keys(prompts).forEach((name) => {
-      const li = document.createElement("li");
-      const b = document.createElement("button");
-      b.className = "item" + (name === current ? " active" : "");
-      b.textContent = name === "default" ? "Default" : name;
-      const small = document.createElement("small");
-      small.textContent = name === "default" ? "Every Pi without its own" : "Only this Pi";
-      b.appendChild(small);
+      const b = el("button", "item" + (name === current ? " active" : ""));
+      const text = name === current ? $("text").value : prompts[name];
+      const info = el("div");
+      info.append(
+        el("strong", "", name === "default" ? "Default" : name),
+        el("small", "", name === "default" ? "Every Voice Kit without its own" : "Only this Voice Kit")
+      );
+      b.append(el("span", "avatar", emojiFor(text)), info);
       b.onclick = () => select(name);
+      const li = el("li");
       li.appendChild(b);
       list.appendChild(li);
     });
@@ -229,23 +561,15 @@
     const piList = $("pi-list");
     piList.replaceChildren();
     if (!pis.length) {
-      const li = document.createElement("li");
-      li.className = "empty";
-      li.textContent = "None yet. They show up here once they connect.";
-      piList.appendChild(li);
+      piList.appendChild(el("li", "empty", "No Voice Kits yet. They show up here as soon as one connects."));
     }
     pis.forEach((pi) => {
-      const li = document.createElement("li");
-      li.className = "pi";
-      const strong = document.createElement("strong");
-      strong.textContent = pi.name;
-      const small = document.createElement("small");
-      small.textContent = (pi.has_own ? "Own personality" : "Uses default") + " · " + ago(pi.seconds_ago);
-      li.append(strong, small);
+      const li = el("li", "pi");
+      const head = el("div", "pi-head");
+      head.append(el("span", "dot" + (pi.seconds_ago < LIVE_SECONDS ? " live" : "")), el("strong", "", pi.name));
+      li.append(head, el("small", "", (pi.has_own ? "Own personality" : "Uses default") + " · " + ago(pi.seconds_ago)));
       if (!pi.has_own) {
-        const b = document.createElement("button");
-        b.className = "btn small";
-        b.textContent = "Give it its own";
+        const b = el("button", "btn small", "Give it its own");
         b.onclick = () => create(pi.name);
         li.appendChild(b);
       }
@@ -255,89 +579,136 @@
 
   function renderEditor() {
     $("title").textContent = current === "default" ? "Default" : current;
-    $("who").textContent = usersOf(current);
+    $("who").textContent = whoText(current);
     $("delete-btn").style.display = current === "default" ? "none" : "";
-    $("reply").classList.remove("show");
+    refreshEditorState();
   }
 
+  function refreshEditorState() {
+    const text = $("text").value;
+    $("title-avatar").textContent = emojiFor(text);
+    $("count").textContent = text.trim().length + " characters";
+    $("unsaved").classList.toggle("show", isDirty());
+  }
+
+  function renderChips() {
+    TEMPLATES.forEach((t) => {
+      const c = el("button", "chip", t.emoji + " " + t.label);
+      c.onclick = () => {
+        if ($("text").value.trim() && $("text").value.trim() !== t.text.trim() &&
+            !confirm("Replace the text with the " + t.label + " starter? You can still undo by not saving.")) return;
+        $("text").value = t.text;
+        $("text").focus();
+        refreshEditorState();
+        renderList();
+      };
+      $("chips").appendChild(c);
+    });
+  }
+
+  // ---------- Data ----------
   async function load() {
-    const res = await fetch("/api/prompts");
-    const data = await res.json();
-    prompts = Object.fromEntries(data.prompts.map((p) => [p.name, p.text]));
-    pis = data.pis;
-    if (!(current in prompts)) current = "default";
+    try {
+      const res = await fetch("/api/prompts");
+      const data = await res.json();
+      prompts = Object.fromEntries(data.prompts.map((p) => [p.name, p.text]));
+      pis = data.pis;
+      if (!(current in prompts)) current = "default";
+      setServer(true, data.model);
+      return true;
+    } catch (err) {
+      setServer(false);
+      return false;
+    }
   }
 
-  async function select(name) {
+  function select(name) {
     if (name !== current && isDirty() && !confirm("You have unsaved changes. Discard them?")) return;
     current = name;
     $("text").value = prompts[name] || "";
-    setStatus("");
+    $("chat").replaceChildren();
     renderList();
     renderEditor();
   }
 
   async function create(name) {
     if (!name) {
-      name = (prompt("The Pi's hostname (letters, numbers, - and _ only):") || "").trim();
+      name = (prompt("The Voice Kit's hostname (letters, numbers, - and _ only):") || "").trim();
       if (!name) return;
     }
-    if (!/^[\w-]+$/.test(name)) { alert("Names can only use letters, numbers, - and _."); return; }
+    if (!/^[\w-]+$/.test(name)) { toast("Names can only use letters, numbers, - and _.", true); return; }
     if (!(name in prompts)) {
       // Start from the default so there's something to edit
-      await save(name, prompts["default"] || "", true);
+      if (!(await save(name, prompts["default"] || "", true))) return;
     }
-    await select(name);
+    if (isDirty() && !confirm("You have unsaved changes. Discard them?")) return;
+    current = name;
+    $("text").value = prompts[name] || "";
+    $("chat").replaceChildren();
+    renderList();
+    renderEditor();
+    toast("Created a personality for " + name + ".");
   }
 
   async function save(name, text, quiet) {
-    const res = await fetch("/api/prompts/" + encodeURIComponent(name), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text }),
-    });
-    const data = await res.json();
-    if (!res.ok) { setStatus(data.error || "Couldn't save.", "err"); return false; }
+    try {
+      const res = await fetch("/api/prompts/" + encodeURIComponent(name), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      });
+      const data = await res.json();
+      if (!res.ok) { toast(data.error || "Couldn't save.", true); return false; }
+    } catch (err) {
+      toast("Couldn't reach the server.", true);
+      return false;
+    }
+    const typed = $("text").value;
     await load();
+    if (name === current) $("text").value = typed;
     renderList();
     renderEditor();
-    if (!quiet) setStatus("Saved. The next question uses this.", "ok");
+    if (!quiet) toast("Saved. The next question uses this.");
     return true;
   }
 
-  $("save-btn").onclick = () => save(current, $("text").value);
-
-  $("delete-btn").onclick = async () => {
-    if (!confirm('Delete "' + current + '"? That Pi will go back to the default personality.')) return;
-    const res = await fetch("/api/prompts/" + encodeURIComponent(current), { method: "DELETE" });
-    if (!res.ok) { setStatus((await res.json()).error || "Couldn't delete.", "err"); return; }
-    await load();
-    current = "default";
-    $("text").value = prompts.default || "";
-    renderList();
-    renderEditor();
-    setStatus("Deleted.", "ok");
-  };
-
-  $("new-btn").onclick = () => create();
-
-  $("text").addEventListener("input", () => {
-    if (isDirty()) setStatus("Unsaved changes", "dirty");
-    else setStatus("");
-  });
-
-  document.addEventListener("keydown", (e) => {
-    if ((e.metaKey || e.ctrlKey) && e.key === "s") {
-      e.preventDefault();
-      save(current, $("text").value);
+  // ---------- Try it ----------
+  function addMessage(who, text, blocked) {
+    const msg = el("div", "msg " + who + (blocked ? " blocked" : ""));
+    if (who === "bot") msg.appendChild(el("div", "orb small"));
+    const bubble = el("div", "bubble");
+    if (text === null) {
+      bubble.classList.add("typing");
+      bubble.append(el("span"), el("span"), el("span"));
+    } else {
+      bubble.textContent = text;
     }
-  });
+    msg.appendChild(bubble);
+    $("chat").appendChild(msg);
+    $("chat").scrollTop = $("chat").scrollHeight;
+    return msg;
+  }
+
+  function speakButton(text) {
+    const b = el("button", "speak", "🔊");
+    b.title = "Read it aloud";
+    b.onclick = () => {
+      speechSynthesis.cancel();
+      speechSynthesis.speak(new SpeechSynthesisUtterance(text));
+    };
+    return b;
+  }
 
   async function ask() {
     const question = $("question").value.trim();
     if (!question) return;
+    $("question").value = "";
     $("ask-btn").disabled = true;
-    $("ask-btn").textContent = "Thinking…";
+    $("orb").classList.add("thinking");
+    addMessage("me", question);
+    const pending = addMessage("bot", null);
+
+    let reply;
     try {
       const res = await fetch("/api/try", {
         method: "POST",
@@ -345,27 +716,72 @@
         body: JSON.stringify({ prompt: $("text").value, question }),
       });
       const data = await res.json();
-      $("reply").textContent = data.reply || data.error;
-      $("reply").classList.add("show");
+      reply = data.reply || data.error;
     } catch (err) {
-      $("reply").textContent = "Couldn't reach the server. Is server.py still running?";
-      $("reply").classList.add("show");
-    } finally {
-      $("ask-btn").disabled = false;
-      $("ask-btn").textContent = "Ask";
+      reply = "Couldn't reach the server. Is server.py still running?";
     }
+
+    pending.remove();
+    const blocked = reply.startsWith("My programming forbids");
+    const msg = addMessage("bot", reply, blocked);
+    if ("speechSynthesis" in window) msg.appendChild(speakButton(reply));
+
+    $("orb").classList.remove("thinking");
+    $("ask-btn").disabled = false;
+    $("question").focus();
   }
 
+  // ---------- Events ----------
+  $("save-btn").onclick = () => save(current, $("text").value);
+
+  $("delete-btn").onclick = async () => {
+    if (!confirm('Delete "' + current + '"? That Voice Kit will go back to the default personality.')) return;
+    try {
+      const res = await fetch("/api/prompts/" + encodeURIComponent(current), { method: "DELETE" });
+      if (!res.ok) { toast((await res.json()).error || "Couldn't delete.", true); return; }
+    } catch (err) {
+      toast("Couldn't reach the server.", true);
+      return;
+    }
+    const gone = current;
+    await load();
+    current = "default";
+    $("text").value = prompts.default || "";
+    $("chat").replaceChildren();
+    renderList();
+    renderEditor();
+    toast(gone + " now uses the default personality.");
+  };
+
+  $("new-btn").onclick = () => create();
   $("ask-btn").onclick = ask;
   $("question").addEventListener("keydown", (e) => { if (e.key === "Enter") ask(); });
 
+  $("text").addEventListener("input", () => {
+    refreshEditorState();
+    const active = document.querySelector(".item.active .avatar");
+    if (active) active.textContent = emojiFor($("text").value);
+  });
+
+  document.addEventListener("keydown", (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") {
+      e.preventDefault();
+      save(current, $("text").value);
+    }
+  });
+
   window.addEventListener("beforeunload", (e) => { if (isDirty()) e.preventDefault(); });
 
-  // Keep the list of connected Pis fresh without touching the text box
+  // Keep the Voice Kit list and server status fresh without touching the text box
   setInterval(async () => {
-    try { await load(); renderList(); $("who").textContent = usersOf(current); } catch (err) {}
+    if (await load()) {
+      renderList();
+      $("who").textContent = whoText(current);
+      $("unsaved").classList.toggle("show", isDirty());
+    }
   }, 5000);
 
+  renderChips();
   load().then(() => {
     $("text").value = prompts[current] || "";
     renderList();

@@ -373,7 +373,8 @@ class Handler(BaseHTTPRequestHandler):
                  "has_own": name in own}
                 for name, seen in sorted(_seen_pis.items())
             ]
-            self._send_json({"prompts": list_prompts(), "pis": pis})
+            self._send_json({"prompts": list_prompts(), "pis": pis, "model": CHAT_MODEL,
+                             "safety": bool(SAFETY_MODEL)})
             return
 
         try:
