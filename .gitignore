@@ -1,3 +1,8 @@
 __pycache__/
 *.pyc
 .DS_Store
+
+# Per-kit personalities belong to each camp; only ship the default
+computer/prompts/*
+!computer/prompts/default.txt
+!computer/prompts/default.voice.json

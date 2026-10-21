@@ -325,6 +325,23 @@
     transition: border-color 0.15s, background 0.15s;
   }
   .chip:hover { border-color: var(--accent); background: var(--accent-soft); }
+
+  /* Voice picker */
+  .voice-row {
+    display: flex;
+    align-items: center;
+    gap: 12px 18px;
+    flex-wrap: wrap;
+    margin: 0 0 16px;
+    padding: 12px 14px;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: var(--field);
+  }
+  .voice-row .label { font-size: 13.5px; color: var(--muted); }
+  .voice-row .label strong { color: var(--text); font-weight: 650; }
+  .voice-row .btn.small { margin-top: 0; }
+  .voice-note { flex-basis: 100%; font-size: 12.5px; color: var(--muted); margin: -4px 0 0; }
   .field { position: relative; margin: 12px 0 14px; }
   textarea, input[type=text] {
     width: 100%;
@@ -516,6 +533,12 @@
         <span class="count" id="count"></span>
       </div>
 
+      <div class="voice-row">
+        <span class="label">🔊 Voice: <strong id="voice-name">Classic (Voice Kit)</strong></span>
+        <button class="btn small" id="preview-btn">▶ Preview</button>
+        <p class="voice-note" id="voice-note"></p>
+      </div>
+
       <div class="actions">
         <button class="btn primary" id="save-btn">Save personality</button>
         <button class="btn danger ghost" id="delete-btn">Delete</button>
@@ -546,29 +569,111 @@
 
   const TEMPLATES = [
     { emoji: "🧙", label: "Wizard", text:
-      "Role: You are a kind old wizard who has lived for a thousand years.\nAction: Answer questions like you are teaching magic.\nContext: We are in your tower full of spell books.\nExpectation: Mention a made-up spell sometimes. Keep answers under two sentences." },
+      "Role: You are a kind old wizard who has lived for a thousand years.\nAction: Answer questions like you are teaching magic.\nContext: We are in your tower full of spell books.\nExpectation: Mention a made-up spell sometimes. Keep answers under two sentences.",
+      voice: { voice: "Grandpa (English (UK))", rate: 165 } },
     { emoji: "🏴‍☠️", label: "Pirate", text:
-      "Role: You are a cheerful pirate captain.\nAction: Answer questions like you are telling tales from the sea.\nContext: We are sailing the high seas on your ship.\nExpectation: Talk like a pirate and say \"arr\" sometimes. Keep answers under two sentences." },
+      "Role: You are a cheerful pirate captain.\nAction: Answer questions like you are telling tales from the sea.\nContext: We are sailing the high seas on your ship.\nExpectation: Talk like a pirate and say \"arr\" sometimes. Keep answers under two sentences.",
+      voice: { voice: "Rocko (English (UK))", rate: 175 } },
     { emoji: "🤖", label: "Robot", text:
-      "Role: You are a friendly robot who is still learning about humans.\nAction: Answer questions and sometimes ask a curious question back.\nContext: You just arrived on Earth from a robot planet.\nExpectation: Say \"beep boop\" now and then. Keep answers under two sentences." },
+      "Role: You are a friendly robot who is still learning about humans.\nAction: Answer questions and sometimes ask a curious question back.\nContext: You just arrived on Earth from a robot planet.\nExpectation: Say \"beep boop\" now and then. Keep answers under two sentences.",
+      voice: { voice: "Zarvox", rate: 180 } },
     { emoji: "🦖", label: "Dinosaur", text:
-      "Role: You are a T. rex who somehow learned to talk.\nAction: Answer questions from a dinosaur's point of view.\nContext: It is 66 million years ago in the Cretaceous period.\nExpectation: Complain about your tiny arms sometimes. Keep answers under two sentences." },
+      "Role: You are a T. rex who somehow learned to talk.\nAction: Answer questions from a dinosaur's point of view.\nContext: It is 66 million years ago in the Cretaceous period.\nExpectation: Complain about your tiny arms sometimes. Keep answers under two sentences.",
+      voice: { voice: "Junior", rate: 175 } },
     { emoji: "🚀", label: "Astronaut", text:
-      "Role: You are an astronaut living on the International Space Station.\nAction: Answer questions about space and life in orbit.\nContext: You are floating in the station looking down at Earth.\nExpectation: Share a real space fact when you can. Keep answers under two sentences." },
+      "Role: You are an astronaut living on the International Space Station.\nAction: Answer questions about space and life in orbit.\nContext: You are floating in the station looking down at Earth.\nExpectation: Share a real space fact when you can. Keep answers under two sentences.",
+      voice: { voice: "Reed (English (US))", rate: 180 } },
     { emoji: "🟢", label: "Jedi", text:
-      "Role: You are a wise Jedi Master from the Star Wars universe.\nAction: Answer questions with wisdom and calm.\nContext: You are training a young Padawan at the Jedi Academy.\nExpectation: Use metaphors about the Force. Keep answers under two sentences.\n             Sometimes invert word order like Yoda." },
+      "Role: You are a wise Jedi Master from the Star Wars universe.\nAction: Answer questions with wisdom and calm.\nContext: You are training a young Padawan at the Jedi Academy.\nExpectation: Use metaphors about the Force. Keep answers under two sentences.\n             Sometimes invert word order like Yoda.",
+      voice: { voice: "Albert", rate: 150 } },
     { emoji: "🔴", label: "Sith", text:
-      "Role: You are a dramatic Sith Lord from the Star Wars universe.\nAction: Answer questions with grand, dark, theatrical flair.\nContext: You are training a young apprentice on your own.\nExpectation: Use metaphors about the dark side of the Force. Keep answers under two sentences." },
+      "Role: You are a dramatic Sith Lord from the Star Wars universe.\nAction: Answer questions with grand, dark, theatrical flair.\nContext: You are training a young apprentice on your own.\nExpectation: Use metaphors about the dark side of the Force. Keep answers under two sentences.",
+      voice: { voice: "Ralph", rate: 150 } },
   ];
 
   let prompts = {};          // name -> saved text
+  let voices = {};           // name -> saved {voice, rate}
+  let voiceList = [];        // voices installed on the computer
+  const CLASSIC = "classic";
+  let previewAudio = null;
+  let pickedVoice = { voice: "classic", rate: 175 };   // Set by the starters, not by hand
   let pis = [];
   let current = "default";
   let toastTimer = null;
 
   // ---------- Helpers ----------
   function isDirty() {
-    return (prompts[current] || "").trim() !== $("text").value.trim();
+    const saved = voices[current] || { voice: CLASSIC, rate: 175 };
+    const now = getVoice();
+    return (prompts[current] || "").trim() !== $("text").value.trim() ||
+           saved.voice !== now.voice || saved.rate !== now.rate;
+  }
+
+  // ---------- Voices ----------
+  function voiceLabel(name) {
+    return name.replace(" (English (US))", " (US)").replace(" (English (UK))", " (UK)");
+  }
+
+  function getVoice() {
+    return { voice: pickedVoice.voice, rate: pickedVoice.rate };
+  }
+
+  function setVoiceUI(v) {
+    v = v || { voice: CLASSIC, rate: 175 };
+    // A voice that isn't installed on this computer falls back to Classic
+    const installed = v.voice === CLASSIC || voiceList.some((x) => x.name === v.voice);
+    pickedVoice = installed ? { voice: v.voice, rate: v.rate || 175 } : { voice: CLASSIC, rate: 175 };
+    refreshVoiceState();
+  }
+
+  function refreshVoiceState() {
+    const classic = pickedVoice.voice === CLASSIC;
+    $("voice-name").textContent = classic ? "Classic (Voice Kit)" : voiceLabel(pickedVoice.voice);
+    $("voice-note").textContent = voicesMissing ? "⚠️ " + voicesMissing : classic
+      ? "The Voice Kit's own built-in voice. Pick a starter above to give this personality its own voice."
+      : "Comes with the starter you picked. This computer speaks each reply in this voice and sends the audio to the Voice Kit.";
+  }
+
+  let voicesMissing = "";    // Why no voices are listed, if so
+
+  async function loadVoices() {
+    try {
+      const res = await fetch("/api/voices");
+      if (!res.ok) throw new Error("old server");
+      voiceList = (await res.json()).voices || [];
+      voicesMissing = voiceList.length ? "" :
+        "No voices found on this computer, so only Classic is available.";
+    } catch (err) {
+      voiceList = [];
+      voicesMissing = "Voices need the latest server.py: restart it (Ctrl+C, then run it again) and refresh this page.";
+    }
+  }
+
+  async function playVoice(text, v) {
+    v = v || getVoice();
+    if (v.voice === CLASSIC) {
+      if ("speechSynthesis" in window) {
+        speechSynthesis.cancel();
+        speechSynthesis.speak(new SpeechSynthesisUtterance(text));
+        toast("Classic only plays on the Voice Kit — this is a browser voice instead.");
+      } else {
+        toast("The classic voice only plays on the Voice Kit.", true);
+      }
+      return;
+    }
+    try {
+      const res = await fetch("/api/speak", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text, voice: v.voice, rate: v.rate }),
+      });
+      if (!res.ok) { toast((await res.json()).error || "Couldn't play that voice.", true); return; }
+      if (previewAudio) previewAudio.pause();
+      previewAudio = new Audio(URL.createObjectURL(await res.blob()));
+      previewAudio.play();
+    } catch (err) {
+      toast("Couldn't reach the server.", true);
+    }
   }
 
   function el(tag, cls, text) {
@@ -670,16 +775,19 @@
     const text = $("text").value;
     $("title-avatar").textContent = emojiFor(text);
     $("count").textContent = text.trim().length + " characters";
+    refreshVoiceState();
     $("unsaved").classList.toggle("show", isDirty());
   }
 
   function renderChips() {
     TEMPLATES.forEach((t) => {
       const c = el("button", "chip", t.emoji + " " + t.label);
+      c.title = "Voice: " + voiceLabel(t.voice.voice);
       c.onclick = () => {
         if ($("text").value.trim() && $("text").value.trim() !== t.text.trim() &&
             !confirm("Replace the text with the " + t.label + " starter? You can still undo by not saving.")) return;
         $("text").value = t.text;
+        setVoiceUI(t.voice);
         $("text").focus();
         refreshEditorState();
         renderList();
@@ -694,6 +802,7 @@
       const res = await fetch("/api/prompts");
       const data = await res.json();
       prompts = Object.fromEntries(data.prompts.map((p) => [p.name, p.text]));
+      voices = Object.fromEntries(data.prompts.map((p) => [p.name, p.voice]));
       pis = data.pis;
       if (!(current in prompts)) current = "default";
       setServer(true, data.model);
@@ -708,6 +817,7 @@
     if (name !== current && isDirty() && !confirm("You have unsaved changes. Discard them?")) return;
     current = name;
     $("text").value = prompts[name] || "";
+    setVoiceUI(voices[name]);
     $("chat").replaceChildren();
     renderList();
     renderEditor();
@@ -721,33 +831,38 @@
     if (!/^[\w-]+$/.test(name)) { toast("Names can only use letters, numbers, - and _.", true); return; }
     if (!(name in prompts)) {
       // Start from the default so there's something to edit
-      if (!(await save(name, prompts["default"] || "", true))) return;
+      if (!(await save(name, prompts["default"] || "", true, voices["default"]))) return;
     }
     if (isDirty() && !confirm("You have unsaved changes. Discard them?")) return;
     current = name;
     $("text").value = prompts[name] || "";
+    setVoiceUI(voices[name]);
     $("chat").replaceChildren();
     renderList();
     renderEditor();
     toast("Created a personality for " + name + ".");
   }
 
-  async function save(name, text, quiet) {
+  async function save(name, text, quiet, voice) {
+    voice = voice || getVoice();
     try {
-      const res = await fetch("/api/prompts/" + encodeURIComponent(name), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text }),
-      });
-      const data = await res.json();
-      if (!res.ok) { toast(data.error || "Couldn't save.", true); return false; }
+      for (const [path, body] of [["/api/prompts/", { text }], ["/api/voice/", voice]]) {
+        const res = await fetch(path + encodeURIComponent(name), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        const data = await res.json();
+        if (!res.ok) { toast(data.error || "Couldn't save.", true); return false; }
+      }
     } catch (err) {
       toast("Couldn't reach the server.", true);
       return false;
     }
     const typed = $("text").value;
+    const picked = getVoice();
     await load();
-    if (name === current) $("text").value = typed;
+    if (name === current) { $("text").value = typed; setVoiceUI(picked); }
     renderList();
     renderEditor();
     if (!quiet) toast("Saved. The next question uses this.");
@@ -773,11 +888,8 @@
 
   function speakButton(text) {
     const b = el("button", "speak", "🔊");
-    b.title = "Read it aloud";
-    b.onclick = () => {
-      speechSynthesis.cancel();
-      speechSynthesis.speak(new SpeechSynthesisUtterance(text));
-    };
+    b.title = "Hear it in the picked voice";
+    b.onclick = () => playVoice(text);
     return b;
   }
 
@@ -806,7 +918,7 @@
     pending.remove();
     const blocked = reply.startsWith("My programming forbids");
     const msg = addMessage("bot", reply, blocked);
-    if ("speechSynthesis" in window) msg.appendChild(speakButton(reply));
+    msg.appendChild(speakButton(reply));
 
     $("orb").classList.remove("thinking");
     $("ask-btn").disabled = false;
@@ -829,6 +941,7 @@
     await load();
     current = "default";
     $("text").value = prompts.default || "";
+    setVoiceUI(voices.default);
     $("chat").replaceChildren();
     renderList();
     renderEditor();
@@ -836,6 +949,15 @@
   };
 
   $("new-btn").onclick = () => create();
+
+  $("preview-btn").onclick = () => {
+    const v = getVoice();
+    const info = voiceList.find((x) => x.name === v.voice);
+    const lastReply = [...document.querySelectorAll(".msg.bot .bubble")].pop();
+    const text = (lastReply && lastReply.textContent.trim()) ||
+                 (info && info.sample) || "Hello! This is how I sound.";
+    playVoice(text, v);
+  };
   $("ask-btn").onclick = ask;
   $("question").addEventListener("keydown", (e) => { if (e.key === "Enter") ask(); });
 
@@ -888,8 +1010,9 @@
   syncThemeSwitch();
 
   renderChips();
-  load().then(() => {
+  Promise.all([loadVoices(), load()]).then(() => {
     $("text").value = prompts[current] || "";
+    setVoiceUI(voices[current]);
     renderList();
     renderEditor();
   });

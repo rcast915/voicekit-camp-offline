@@ -16,7 +16,8 @@ Edit and save a file — the next question uses the new prompt.  No restart need
 Changing a Pi's prompt also wipes that Pi's conversation memory.
 
 EDITOR: open http://localhost:8000 on this computer to edit personalities in a
-browser and try test questions.  It only answers requests from this computer.
+browser, pick the voice each Pi speaks with, and try test questions.  It only
+answers requests from this computer.
 
 SETUP (once, on the computer):
     1. Install Ollama (https://ollama.com), then:
@@ -30,11 +31,16 @@ SETUP (once, on the computer):
 Ollama only needs to listen on localhost — the Pis talk to this server, not to Ollama.
 """
 
+import base64
 import io
 import json
 import logging
 import os
 import re
+import shutil
+import subprocess
+import tempfile
+import textwrap
 import threading
 import time
 import urllib.request
@@ -59,6 +65,13 @@ WHISPER_LANGUAGE = "en"
 
 MAX_REPLY_TOKENS  = 100
 MAX_HISTORY_TURNS = 10              # Question/answer pairs remembered per Pi
+
+# --- Voices ------------------------------------------------------------
+#  "classic" = the Pi's own built-in voice.  Anything else is a macOS voice
+#  name (see `say -v ?`); the computer renders the reply and sends the audio.
+CLASSIC_VOICE     = "classic"
+DEFAULT_VOICE     = {"voice": CLASSIC_VOICE, "rate": 175}
+VOICE_SAMPLE_RATE = 22050
 
 PROMPTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "prompts")
 EDITOR_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "editor.html")
@@ -150,7 +163,7 @@ def list_prompts():
         if os.path.isfile(path):
             with open(path, encoding="utf-8") as f:
                 text = f.read()
-        prompts.append({"name": name, "text": text})
+        prompts.append({"name": name, "text": text, "voice": load_voice(name)})
     return prompts
 
 
@@ -160,9 +173,85 @@ def save_prompt(name, text):
 
 
 def delete_prompt(name):
-    path = os.path.join(PROMPTS_DIR, name + ".txt")
-    if os.path.isfile(path):
-        os.remove(path)
+    for ext in (".txt", ".voice.json"):
+        path = os.path.join(PROMPTS_DIR, name + ext)
+        if os.path.isfile(path):
+            os.remove(path)
+
+
+# =========================================================================
+#  VOICES  —  prompts/<name>.voice.json  {"voice": "...", "rate": 175}
+# =========================================================================
+
+_voice_list = None
+
+
+def list_voices():
+    """English voices installed on this Mac: [{"name", "locale", "sample"}]."""
+    global _voice_list
+    if _voice_list is None:
+        _voice_list = []
+        if shutil.which("say"):
+            out = subprocess.run(["say", "-v", "?"], capture_output=True, text=True).stdout
+            for line in out.splitlines():
+                m = re.match(r"^(.+?)\s+([a-z]{2}_[A-Z0-9]+)\s+#\s*(.*)$", line)
+                if m and m.group(2).startswith("en_"):
+                    _voice_list.append({"name": m.group(1).strip(), "locale": m.group(2),
+                                        "sample": m.group(3).strip()})
+    return _voice_list
+
+
+def load_voice(pi_name):
+    """Voice settings for this Pi: <pi_name>.voice.json, else default's, else classic."""
+    for name in (pi_name, "default"):
+        path = os.path.join(PROMPTS_DIR, name + ".voice.json")
+        if os.path.isfile(path):
+            try:
+                with open(path, encoding="utf-8") as f:
+                    return clean_voice(json.load(f))
+            except (OSError, ValueError):
+                pass
+    return dict(DEFAULT_VOICE)
+
+
+def clean_voice(data):
+    """Keep only a known voice name and a sensible speaking rate."""
+    voice = (data or {}).get("voice") or CLASSIC_VOICE
+    if voice != CLASSIC_VOICE and voice not in {v["name"] for v in list_voices()}:
+        voice = CLASSIC_VOICE
+    try:
+        rate = int((data or {}).get("rate") or DEFAULT_VOICE["rate"])
+    except (TypeError, ValueError):
+        rate = DEFAULT_VOICE["rate"]
+    return {"voice": voice, "rate": max(90, min(300, rate))}
+
+
+def save_voice(name, data):
+    with open(os.path.join(PROMPTS_DIR, name + ".voice.json"), "w", encoding="utf-8") as f:
+        json.dump(clean_voice(data), f)
+
+
+def synthesize(text, settings):
+    """Render *text* with a macOS voice.  Returns WAV bytes, or None for classic."""
+    settings = clean_voice(settings)
+    if settings["voice"] == CLASSIC_VOICE or not text:
+        return None
+    with tempfile.TemporaryDirectory() as tmp:
+        text_file = os.path.join(tmp, "text.txt")
+        wav_file = os.path.join(tmp, "speech.wav")
+        with open(text_file, "w", encoding="utf-8") as f:
+            f.write(text)
+        try:
+            subprocess.run(
+                ["say", "-v", settings["voice"], "-r", str(settings["rate"]),
+                 "-o", wav_file, "--data-format=LEI16@%d" % VOICE_SAMPLE_RATE, "-f", text_file],
+                check=True, timeout=30, capture_output=True,
+            )
+            with open(wav_file, "rb") as f:
+                return f.read()
+        except (OSError, subprocess.SubprocessError) as e:
+            logging.error("Text-to-speech failed (%s) — the Pi will use its own voice.", e)
+            return None
 
 
 # --- Pis that have talked to this server (shown in the editor) -----------
@@ -264,8 +353,9 @@ def ask(pi_name, question):
 #  HTTP SERVER
 #
 #  For the Pis:
-#  POST /ask    body = WAV audio      -> {"heard", "command", "reply"}
+#  POST /ask    body = WAV audio      -> {"heard", "command", "reply", "audio"}
 #  POST /reset  (Pi just booted)      -> {"ok": true}
+#               optional body {"prompt"} = personality from boot_sequence.py
 #  GET  /health                       -> {"ok": true}
 #  Every Pi request carries an X-Pi-Name header (the Pi's hostname).
 #
@@ -275,6 +365,9 @@ def ask(pi_name, question):
 #  POST   /api/prompts/<name>         body {"text"}     -> save
 #  DELETE /api/prompts/<name>                           -> delete (not default)
 #  POST   /api/try                    body {"prompt", "question"} -> {"reply"}
+#  GET    /api/voices                 -> {"voices": [...]}   macOS voices
+#  POST   /api/voice/<name>           body {"voice", "rate"}  -> save
+#  POST   /api/speak                  body {"text", "voice", "rate"} -> WAV
 # =========================================================================
 
 class Handler(BaseHTTPRequestHandler):
@@ -328,8 +421,19 @@ class Handler(BaseHTTPRequestHandler):
 
     def _pi_reset(self):
         pi_name = self._pi_name()
-        self._read_body()
+        body = self._read_body()
         _seen_pis[pi_name] = time.time()
+
+        # A student's boot_sequence.py can send its personality prompt here.
+        # It becomes this Pi's personality (and shows up in the editor).
+        try:
+            student_prompt = textwrap.dedent(json.loads(body).get("prompt") or "").strip()
+        except (ValueError, AttributeError):
+            student_prompt = ""
+        if student_prompt and pi_name != "default":
+            save_prompt(pi_name, student_prompt)
+            logging.info("[%s] Saved personality from the Pi's boot_sequence.py.", pi_name)
+
         reset_conversation(pi_name)
         logging.info("[%s] Connected — conversation reset.", pi_name)
         self._send_json({"ok": True})
@@ -352,7 +456,12 @@ class Handler(BaseHTTPRequestHandler):
 
         reply = ask(pi_name, heard)
         logging.info("[%s] Reply: %s", pi_name, reply)
-        self._send_json({"heard": heard, "command": None, "reply": reply})
+        audio = synthesize(reply, load_voice(pi_name))
+        self._send_json({
+            "heard": heard, "command": None, "reply": reply,
+            # Spoken reply as WAV (base64); absent means "use the Pi's own voice"
+            "audio": base64.b64encode(audio).decode("ascii") if audio else None,
+        })
 
     # --- Personality editor ------------------------------------------------
 
@@ -377,6 +486,10 @@ class Handler(BaseHTTPRequestHandler):
                              "safety": bool(SAFETY_MODEL)})
             return
 
+        if method == "GET" and self.path == "/api/voices":
+            self._send_json({"voices": list_voices(), "classic": CLASSIC_VOICE})
+            return
+
         try:
             data = json.loads(self._read_body() or b"{}")
         except ValueError:
@@ -390,6 +503,24 @@ class Handler(BaseHTTPRequestHandler):
                 return
             reply, _ = generate_reply((data.get("prompt") or "").strip(), [], question)
             self._send_json({"reply": reply})
+            return
+
+        if method == "POST" and self.path == "/api/speak":
+            audio = synthesize((data.get("text") or "").strip()[:500], data)
+            if audio is None:
+                self._send_json({"error": "The classic voice only plays on the Pi."}, 400)
+            else:
+                self._send(audio, "audio/wav")
+            return
+
+        if method == "POST" and self.path.startswith("/api/voice/"):
+            name = self.path[len("/api/voice/"):]
+            if not valid_name(name):
+                self._send_json({"error": "Names can only use letters, numbers, - and _."}, 400)
+                return
+            save_voice(name, data)
+            logging.info("Editor saved voice for '%s': %s", name, clean_voice(data))
+            self._send_json({"ok": True, "voice": clean_voice(data)})
             return
 
         if self.path.startswith("/api/prompts/"):

@@ -7,12 +7,16 @@ while they talk; the recording is sent over the Ethernet cable to the
 instructor's computer (computer/server.py), which runs speech-to-text and a
 local AI model.  The reply comes back as text and the Pi speaks it.
 
-Nothing goes to the internet.  The bot's personality is NOT in this file —
-edit computer/prompts/default.txt (or computer/prompts/<this-pi's-hostname>.txt)
-on the computer instead.
+Nothing goes to the internet.
 
-Instructors paste student code into boot_sequence() to customise the
-startup animation.
+Instructors paste student code into boot_sequence.py (the startup animation
+and personality prompt).  The personality is sent to the computer at startup;
+it can also be edited there at http://localhost:8000, along with the voice
+the box speaks with.
+
+Button:
+    Hold and talk     ask a question
+    3 quick clicks    reboot the Pi
 
 Usage:
     python3 ai_camp_assistant.py
@@ -21,6 +25,7 @@ Usage:
 # =========================================================================
 #  IMPORTS
 # =========================================================================
+import base64
 import json
 import logging
 import math
@@ -34,6 +39,8 @@ import threading
 import urllib.request
 import urllib.error
 import wave
+
+import boot_sequence as boot_config  # alias avoids collision with boot_sequence() function
 
 import RPi.GPIO as GPIO
 
@@ -49,22 +56,27 @@ from aiy.voice.audio import AudioFormat, play_wav, record_file
 # --- Hardware pin assignments (Voice HAT V1 servo header) ----------------
 GREEN_LED_PIN = 26        # External green LED
 RED_LED_PIN   = 6         # External red LED
-BUTTON_PIN    = 23        # Built-in arcade button (read-only for long press)
+BUTTON_PIN    = 23        # Built-in arcade button (read-only for rapid clicks)
 
 # --- The instructor's computer running computer/server.py ----------------
 SERVER_URL = "http://192.168.50.1:8000"
-PI_NAME    = socket.gethostname()    # Picks prompts/<PI_NAME>.txt if it exists
+PI_NAME    = socket.gethostname()    # Picks prompts/<PI_NAME>.txt on the computer
 
 # --- Recording -----------------------------------------------------------
 RECORDING_FILE     = "/tmp/aiy_camp_question.wav"
+REPLY_FILE         = "/tmp/aiy_camp_reply.wav"
 RECORD_FORMAT      = AudioFormat(sample_rate_hz=16000, num_channels=1, bytes_per_sample=2)
-MAX_RECORD_SECONDS = 8      # Recording stops here even if the button is still held
-REBOOT_HOLD_SECONDS = 10    # Must stay longer than MAX_RECORD_SECONDS
+MAX_RECORD_SECONDS = 15     # Recording stops here even if the button is still held
+MIN_RECORD_SECONDS = 0.5    # Shorter presses are clicks (e.g. for reboot), not questions
+
+# --- Rapid-click reboot --------------------------------------------------
+REBOOT_CLICKS         = 3
+REBOOT_WINDOW_SECONDS = 3.0
 
 # --- Voice settings ------------------------------------------------------
-VOICE_VOLUME = 30
-VOICE_PITCH  = 130
-VOICE_SPEED  = 100
+VOICE_VOLUME = 85
+VOICE_PITCH  = 105
+VOICE_SPEED  = 90
 
 # --- Musical note frequencies (matches Jupyter notebook) -----------------
 NOTE_FREQS = {
@@ -72,6 +84,10 @@ NOTE_FREQS = {
     "F": 349, "F#": 370, "G": 392, "G#": 415, "A": 440,
     "A#": 466, "B": 494,
 }
+
+# --- Global state --------------------------------------------------------
+system_prompt = ""      # Set by boot_sequence(), sent to the computer at startup
+_board        = None    # Set by main() once Board() is initialised
 
 
 # =========================================================================
@@ -99,6 +115,37 @@ def Turn_On_LED(color):
     logging.debug("LED → %s", color)
 
 
+def Set_Button_LED(effect, duration=None):
+    """Control the Voice Kit button LED.  **Same API as the Jupyter notebook.**
+
+    Supported effects: 'on', 'off', 'blink', 'breathe'.
+    Optional *duration* in seconds — LED returns to OFF after that time.
+    """
+    if _board is None:
+        logging.warning("Set_Button_LED called before Board is ready.")
+        return
+
+    effect_lower = effect.lower()
+    _LED_MAP = {
+        "on":      Led.ON,
+        "off":     Led.OFF,
+        "blink":   Led.BLINK,
+        "breathe": Led.PULSE_SLOW,
+    }
+
+    state = _LED_MAP.get(effect_lower)
+    if state is None:
+        logging.warning("Unknown LED effect: '%s' — use 'on', 'off', 'blink', or 'breathe'.", effect)
+        return
+
+    _board.led.state = state
+    logging.debug("Button LED → %s", effect_lower)
+
+    if duration and effect_lower != "off":
+        time.sleep(duration)
+        _board.led.state = Led.OFF
+
+
 def _play_single_freq(freq, duration):
     """Generate a sine-wave WAV file and play it through the Voice HAT speaker."""
     filename = "/tmp/aiy_camp_tone.wav"
@@ -110,8 +157,8 @@ def _play_single_freq(freq, duration):
         w.setsampwidth(2)
         w.setframerate(sample_rate)
         for i in range(n_samples):
-            # Volume capped at 50 % to protect classroom ears
-            value = int(32767.0 * 0.5 * math.sin(
+            # Volume capped at 60 % to protect classroom ears
+            value = int(32767.0 * 0.6 * math.sin(
                 2.0 * math.pi * freq * i / sample_rate
             ))
             w.writeframesraw(struct.pack('<h', value))
@@ -126,13 +173,16 @@ def _play_single_freq(freq, duration):
 def Play_Note(note, duration):
     """Play a musical note for *duration* seconds.
 
-    Accepts single notes ('C', 'D#', 'A') and minor chord arpeggios
-    ('Am', 'Dm', 'Gm').  Matches the Jupyter notebook API exactly.
+    Accepts single notes ('C', 'D#', 'A'), minor chord arpeggios
+    ('Am', 'Dm', 'Gm'), and "" for a rest (silence).
+    Matches the Jupyter notebook API.
     """
-    note = note.upper()
-    logging.debug("Playing note %s for %.2fs", note, duration)
+    note = note.strip().upper()
+    logging.debug("Playing note %s for %.2fs", note or "(rest)", duration)
     try:
-        if note.endswith("M"):
+        if not note:
+            time.sleep(duration)
+        elif note.endswith("M"):
             # Minor chord arpeggios
             arpeggios = {
                 "AM": [220, 262, 330], "BM": [247, 294, 370],
@@ -157,6 +207,39 @@ def say(text):
     tts.say(text, volume=VOICE_VOLUME, pitch=VOICE_PITCH, speed=VOICE_SPEED)
 
 
+def _speak_reply(text, audio_b64):
+    """Play the reply in the voice picked on the computer, or the Pi's own voice."""
+    if audio_b64:
+        try:
+            with open(REPLY_FILE, "wb") as f:
+                f.write(base64.b64decode(audio_b64))
+            try:
+                play_wav(REPLY_FILE)
+            except Exception:
+                subprocess.check_call(['aplay', '-q', REPLY_FILE])
+            return
+        except Exception as e:
+            logging.error("Could not play the computer's voice (%s) — using the Pi's.", e)
+    say(text)
+
+
+# =========================================================================
+#  BOOT SEQUENCE  —  student code lives in boot_sequence.py
+# =========================================================================
+
+def boot_sequence():
+    """Run the startup animation and pick up the student's personality prompt."""
+    global system_prompt
+
+    # Call the external file sequence and pass local helper functions as arguments
+    system_prompt = boot_config.run_boot_sequence(
+        set_led_func=Set_Button_LED,
+        play_note_func=Play_Note,
+        turn_on_led_func=Turn_On_LED,
+        say_func=say,
+    ) or ""
+
+
 # =========================================================================
 #  TALKING TO THE COMPUTER
 # =========================================================================
@@ -173,11 +256,16 @@ def _post(path, body=b"", content_type="application/octet-stream", timeout=60):
 
 
 def _wait_for_server():
-    """Block until the computer answers (it may still be booting)."""
+    """Block until the computer answers (it may still be booting).
+
+    Also clears this Pi's chat memory and sends the student's personality
+    prompt (if boot_sequence.py set one).
+    """
+    body = json.dumps({"prompt": system_prompt}).encode("utf-8")
     announced = False
     while True:
         try:
-            _post("/reset", timeout=5)    # Also clears this Pi's chat memory
+            _post("/reset", body, "application/json", timeout=5)
             logging.info("Connected to %s as '%s'.", SERVER_URL, PI_NAME)
             return
         except (urllib.error.URLError, OSError, ValueError) as e:
@@ -189,63 +277,21 @@ def _wait_for_server():
 
 
 def _record_question(board):
-    """Record from the mic while the button is held (up to MAX_RECORD_SECONDS)."""
+    """Record while the button is held.  Returns how many seconds were recorded."""
+    start = time.monotonic()
     record_file(
         RECORD_FORMAT,
         filename=RECORDING_FILE,
         filetype="wav",
         wait=lambda: board.button.wait_for_release(timeout=MAX_RECORD_SECONDS),
     )
+    return time.monotonic() - start
 
 
 def _ask_server():
     """Send the recording; returns {"heard", "command", "reply"}."""
     with open(RECORDING_FILE, "rb") as f:
         return _post("/ask", f.read(), "audio/wav")
-
-
-# =========================================================================
-#  BOOT SEQUENCE  —  INSTRUCTORS: PASTE STUDENT CODE HERE
-#
-#  Replace the contents of this function with the student's Module 4 code
-#  (section 1 only — the boot animation).  The personality prompt now lives
-#  on the computer in computer/prompts/ — put the student's system_prompt
-#  text in a file there instead of here.
-#
-#  Example student code to paste:
-#
-#      Turn_On_LED("Green")
-#      Play_Note("C", 0.5)
-#      Turn_On_LED("Red")
-#      Play_Note("G", 0.5)
-#
-# =========================================================================
-
-def boot_sequence():
-    """Run the startup animation."""
-
-    # ------------------------------------------------------------------
-    # Boot animation: Imperial March (simplified)
-    # ------------------------------------------------------------------
-    Turn_On_LED("red")
-    Play_Note("G", 0.5)
-    Play_Note("G", 0.5)
-    Play_Note("G", 0.5)
-
-    Turn_On_LED("green")
-    Play_Note("D#", 0.35)
-    Play_Note("A#", 0.15)
-
-    Turn_On_LED("red")
-    Play_Note("G", 0.5)
-    Play_Note("D#", 0.35)
-    Play_Note("A#", 0.15)
-    Play_Note("G", 1.0)
-
-    Turn_On_LED("off")
-
-    say("All systems online. The Force is strong with this one.")
-    Turn_On_LED("green")
 
 
 # =========================================================================
@@ -258,8 +304,8 @@ def _power_off():
 
 
 def _reboot():
-    say("See you in a bit!")
-    subprocess.call("sudo reboot", shell=True)
+    say("Restarting! Give me a moment.")
+    subprocess.call("sudo systemctl restart voicekit.service", shell=True)
 
 
 def _say_ip():
@@ -274,46 +320,55 @@ def _say_ip():
 
 
 # =========================================================================
-#  LONG-PRESS REBOOT MONITOR
+#  RAPID-CLICK REBOOT MONITOR
 # =========================================================================
 
-def _start_long_press_monitor():
-    """Start a daemon thread that reboots the Pi if the button is held long enough.
+def _start_rapid_click_monitor():
+    """Start a background thread that reboots the Pi after 3 quick clicks.
 
-    Every press also records a question, so the hold time is longer than
-    MAX_RECORD_SECONDS — a normal question never triggers a reboot.
-    This allows students to trigger a clean reboot (which pulls new code from
-    GitHub via voicekit_boot.sh) without physically yanking the power cable.
+    An emergency reset so instructors don't have to pull the power cable.
+    Requires REBOOT_CLICKS presses within REBOOT_WINDOW_SECONDS, so normal
+    hold-to-talk use never triggers it.
     """
-    HOLD_SECONDS = REBOOT_HOLD_SECONDS
 
     def _monitor():
+        click_times = []
         while True:
             try:
                 # Wait for button press (active LOW on Voice Kit V1)
                 while GPIO.input(BUTTON_PIN) != 0:
                     time.sleep(0.05)
 
-                start = time.monotonic()
+                now = time.monotonic()
+                # Record this click and discard old ones outside the window
+                click_times.append(now)
+                click_times = [t for t in click_times
+                               if now - t <= REBOOT_WINDOW_SECONDS]
+                logging.debug("Reboot clicks: %d/%d", len(click_times), REBOOT_CLICKS)
+
+                if len(click_times) >= REBOOT_CLICKS:
+                    logging.warning("RAPID CLICK DETECTED (%d clicks) — REBOOTING", REBOOT_CLICKS)
+                    try:
+                        tts.say("Rebooting now.", volume=60)
+                    except Exception:
+                        pass
+                    time.sleep(0.4)
+                    subprocess.call(["sudo", "reboot"])
+                    return
+
+                # Wait for button release before counting the next click
                 while GPIO.input(BUTTON_PIN) == 0:
-                    if time.monotonic() - start >= HOLD_SECONDS:
-                        logging.warning("LONG PRESS DETECTED — REBOOTING")
-                        try:
-                            tts.say("Rebooting now.", volume=60)
-                        except Exception:
-                            pass
-                        time.sleep(0.5)
-                        subprocess.call(["sudo", "reboot"])
-                        return
                     time.sleep(0.05)
+
             except Exception:
                 # GPIO.input may fail briefly before Board initialises the pin.
                 # Sleep and retry silently.
                 time.sleep(1)
 
-    thread = threading.Thread(target=_monitor, daemon=True, name="long-press")
+    thread = threading.Thread(target=_monitor, daemon=True, name="rapid-click")
     thread.start()
-    logging.info("Long-press reboot monitor started (hold button %ss to reboot).", HOLD_SECONDS)
+    logging.info("Rapid-click reboot monitor started (%d clicks in %.0fs to reboot).",
+                 REBOOT_CLICKS, REBOOT_WINDOW_SECONDS)
 
 
 # =========================================================================
@@ -333,30 +388,39 @@ def main():
     GPIO.setup(GREEN_LED_PIN, GPIO.OUT)
     GPIO.setup(RED_LED_PIN, GPIO.OUT)
 
-    # --- Boot sequence (LEDs + sounds) -----------------------------------
-    try:
-        boot_sequence()
-    except Exception as e:
-        logging.error("Boot sequence error: %s", e)
-        say("Boot error. Starting assistant anyway.")
-
-    # --- Connect to the computer -----------------------------------------
-    _wait_for_server()
-
     try:
         with Board() as board:
-            # Start long-press reboot monitor (after Board configures the button)
-            _start_long_press_monitor()
+            # Make board available to Set_Button_LED and other helpers
+            global _board
+            _board = board
+
+            # --- Boot sequence (LEDs + sounds + personality) -------------
+            try:
+                boot_sequence()
+            except Exception as e:
+                logging.error("Boot sequence error: %s", e)
+                say("Boot error. Starting assistant anyway.")
+
+            # --- Connect to the computer (sends the personality) ---------
+            _wait_for_server()
+
+            # Start rapid-click reboot monitor (after Board configures the button)
+            _start_rapid_click_monitor()
 
             say("Ready!")
 
             while True:
-                board.led.state = Led.BEACON_DARK      # Idle — dim breathing
+                board.led.state = Led.PULSE_SLOW        # Idle — slow breathing
                 logging.info("Hold the button and speak...")
 
                 board.button.wait_for_press()
                 board.led.state = Led.ON                # Listening — solid
-                _record_question(board)
+                seconds = _record_question(board)
+
+                if seconds < MIN_RECORD_SECONDS:
+                    # A quick click (maybe one of the 3 reboot clicks), not a question
+                    logging.debug("Ignored %.2fs click.", seconds)
+                    continue
 
                 board.led.state = Led.PULSE_QUICK       # Thinking — quick pulse
                 Turn_On_LED("green")
@@ -393,7 +457,7 @@ def main():
                     reply = result.get("reply") or "Something went wrong."
                     print("You: %s" % text)
                     print("Bot: %s" % reply)
-                    say(reply)
+                    _speak_reply(reply, result.get("audio"))
 
     except KeyboardInterrupt:
         logging.info("Interrupted by user.")

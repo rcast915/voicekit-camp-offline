@@ -1,45 +1,41 @@
 # =========================================================================
-#  voicekit.service  —  Systemd unit for AI Summer Camp Voice Kit
+#  voicekit.service  —  Systemd unit for AI Summer Camp Voice Kit (offline)
+#
+#  Starts ai_camp_assistant.py at boot.  The assistant waits until the
+#  instructor's computer (computer/server.py) is reachable, so the Pi and
+#  the computer can be turned on in any order.
 #
 #  INSTALLATION (run these commands on each Raspberry Pi):
 #
-#    # 1. Copy the service file:
-#    sudo cp /home/pi/voicekit-camp/voicekit.service /etc/systemd/system/voicekit.service
+#    # 1. Copy the assistant and the student's boot sequence:
+#    mkdir -p /home/pi/voicekit-offline
+#    cp ai_camp_assistant.py boot_sequence.py /home/pi/voicekit-offline/
 #
-#    # 2. Reload systemd so it picks up the new file:
+#    # 2. Copy this file and enable it:
+#    sudo cp voicekit.service /etc/systemd/system/voicekit.service
 #    sudo systemctl daemon-reload
+#    sudo systemctl enable --now voicekit.service
 #
-#    # 3. Enable auto-start on every boot:
-#    sudo systemctl enable voicekit.service
-#
-#    # 4. Start it right now (to test without rebooting):
-#    sudo systemctl start voicekit.service
-#
-#    # 5. Check status / view logs:
-#    sudo systemctl status voicekit.service
+#    # 3. Check status / view logs:
+#    systemctl status voicekit.service
 #    journalctl -u voicekit.service -f
 #
-#  IMPORTANT: This service uses Type=oneshot with RemainAfterExit=yes.
-#  If the script fails, it will NOT restart automatically.  This is
-#  intentional — an infinite restart loop would burn Google Cloud API
-#  credits.  Check /home/pi/error.log to diagnose failures.
+#  Restart=on-failure brings the assistant back after a crash.  There are
+#  no API costs any more, so restarting is safe.  Saying "goodbye" exits
+#  cleanly and does NOT restart — reboot the Pi to start it again.
 # =========================================================================
 
 [Unit]
-Description=AI Camp Voice Kit Assistant
-Wants=network-online.target
-After=network-online.target
-Wants=systemd-timesyncd.service
-After=systemd-timesyncd.service
+Description=AI Camp Voice Kit Assistant (offline edition)
+After=network.target sound.target
 
 [Service]
 Type=simple
 User=pi
-Environment=DISPLAY=:0
-ExecStart=/bin/bash /home/pi/voicekit_boot.sh
-Restart=no
-StandardOutput=journal
-StandardError=journal
+WorkingDirectory=/home/pi/voicekit-offline
+ExecStart=/usr/bin/python3 -u /home/pi/voicekit-offline/ai_camp_assistant.py
+Restart=on-failure
+RestartSec=5
 
 [Install]
 WantedBy=multi-user.target
