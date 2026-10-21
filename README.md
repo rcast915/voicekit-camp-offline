@@ -1,6 +1,6 @@
 # VoiceKit Camp — Offline Edition
 
-A talking AI assistant for summer camps, built on the **Google AIY Voice Kit V1**, that runs with **no internet connection**.
+A talking AI assistant for orange and blue day, built on the **Google AIY Voice Kit V1**, that runs with **no internet connection**.
 
 Students hold the Voice Kit's button and ask a question. The Raspberry Pi sends the recording over an Ethernet cable to the instructor's computer. The computer turns the speech into text, writes a reply in the bot's personality with a local AI model, checks the reply for safety, and sends it back. The Voice Kit then speaks the reply out loud.
 
