@@ -26,11 +26,13 @@ Based on [briancasio/voicekit-camp](https://github.com/briancasio/voicekit-camp)
 |---|---|
 | **Voice Kit** | Google AIY Voice Kit V1 on a Raspberry Pi 3, running Raspberry Pi OS with the AIY Python library installed. The camp kits already have this. |
 | **Computer** | A **Mac** or **Windows** PC that can run a small AI model: ideally 16 GB of memory, 8 GB at minimum. An Apple Silicon Mac works best. |
-| **Cable** | An Ethernet cable, plus a USB-C (or USB) to Ethernet adapter if your computer has no Ethernet port. To connect several kits at once, use a small network switch. |
+| **Cable** | An Ethernet cable, plus a USB-C (or USB) to Ethernet adapter if your computer has no Ethernet port. |
 | **The kit's password** | Ask whoever set up the kits for the password of the `pi` user. |
 | **Internet, once** | Only for downloading everything in Part 1. After that, it all runs offline. |
 
-**Mac or Windows?** Everything works on both. The only difference is the **character voices** (robot, wizard, pirate…), which use voices built into macOS. On Windows, every kit speaks with **Classic**, the Voice Kit's own built-in voice.
+**One computer per kit.** Each Voice Kit plugs straight into its own computer, which runs the AI for just that kit. Every kit/computer pair is set up the same way.
+
+**Mac or Windows?** Everything works on both. The only difference is the **character voices** (robot, wizard, pirate…), which use voices built into macOS. On Windows, the kit speaks with **Classic**, the Voice Kit's own built-in voice.
 
 **Where to type commands:**
 - **Mac:** the **Terminal** app.
@@ -71,7 +73,7 @@ No git? On the GitHub page, click **Code → Download ZIP**, unzip it, and `cd` 
 
 ### 1.4 Give the computer's Ethernet port a fixed address
 
-The kits look for the computer at **`192.168.50.1`**. Plug the Ethernet adapter in first so it shows up in the settings.
+The kit looks for the computer at **`192.168.50.1`**. Plug the Ethernet adapter in first so it shows up in the settings.
 
 **Mac:**
 1. **System Settings → Network**, then click your Ethernet adapter. If it isn't listed, check **Other Services**.
@@ -85,7 +87,7 @@ The kits look for the computer at **`192.168.50.1`**. Plug the Ethernet adapter 
 
 Wi-Fi keeps working as normal; this only affects the cable to the Voice Kits.
 
-### 1.5 Windows only: let the kits through the firewall
+### 1.5 Windows only: let the kit through the firewall
 
 Windows blocks incoming connections on a direct cable by default. Open **PowerShell as administrator** (right-click Start → *Terminal (Admin)*) and run:
 ```powershell
@@ -222,7 +224,7 @@ The kit should now play the **Futurama** startup tune and say **"Ready!"** **Hol
 
 Put a sticker on the kit with its real name and address, e.g. **`voicekit-2 · 192.168.50.102`**.
 
-**Several kits at once:** connect them all to a network switch, and plug the switch into your computer. Each kit's address uses its own number, so they don't clash.
+Each kit keeps its own address even though it has its own computer. That way, plugging a computer into a different kit later doesn't trigger SSH's "remote host identification has changed" warning.
 
 ---
 
@@ -244,11 +246,11 @@ Put a sticker on the kit with its real name and address, e.g. **`voicekit-2 · 1
    ```
    And make sure Windows won't sleep: **Settings → System → Power → Screen and sleep → When plugged in, put my device to sleep after: Never**.
 
-   If the computer sleeps, every kit stops answering. Keep it plugged in with the lid open.
-2. **Turn on the kits.** Plug in their cables and power. Each one plays its tune and says **"Ready!"** If the computer isn't ready yet, a kit says *"Waiting for the computer"* and keeps trying, so you can start them in any order.
+   If the computer sleeps, the kit stops answering. Keep it plugged in with the lid open.
+2. **Turn on the kit.** Plug in its cable and power. It plays its tune and says **"Ready!"** If the computer isn't ready yet, the kit says *"Waiting for the computer"* and keeps trying, so you can start them in either order.
 3. **To change personalities,** open **http://localhost:8000** on the computer.
 
-**At the end of the day:** say **"shutdown"** to each kit, or just unplug them. Then press Ctrl+C in the server window.
+**At the end of the day:** say **"shutdown"** to the kit, or just unplug it. Then press Ctrl+C in the server window.
 
 ---
 
@@ -269,10 +271,10 @@ If a question is inappropriate, or the reply fails the safety check, the kit ans
 
 ## The personality editor
 
-Open **http://localhost:8000** on the computer running the server. It only opens on that computer; the kits and other devices on the network can't change anything.
+Open **http://localhost:8000** on the computer running the server. It only opens on that computer; the kit and other devices on the network can't change anything.
 
-- **Default** is the personality for every kit that doesn't have its own. Out of the box it's the 🤖 **Robot**.
-- **Voice Kits** lists every kit that has connected. Click **Give it its own** to give that kit a different personality.
+- **Default** is your kit's personality. Out of the box it's the 🤖 **Robot**. With one kit per computer, this is the only one you need to edit.
+- **Voice Kits** shows your kit once it has connected, with a light that's on while it's online. (**Give it its own** is only useful if you ever connect more than one kit to the same computer.)
 - **Starters:** one click on Wizard, Pirate, Robot, Dinosaur, Astronaut, Jedi or Sith fills in a full *Role / Action / Context / Expectation* prompt and a matching voice. Edit the text however you like.
 
   | Starter | Voice (Mac) | Starter | Voice (Mac) |
