@@ -3,7 +3,7 @@
 test_client.py  —  Pretend to be a Voice Kit Pi, using this computer's mic and speakers
 
 Lets you test server.py without a Pi or a cable.  It talks to the server the
-same way ai_camp_assistant.py does on the Pi.
+same way ai_camp_assistant.py does on the Pi.  Works on macOS, Windows and Linux.
 
     Terminal 1:  python computer/server.py
     Terminal 2:  python computer/test_client.py
@@ -18,14 +18,24 @@ Options:
 """
 
 import argparse
+import base64
 import io
 import json
-import select
+import os
 import subprocess
 import sys
-import termios
+import tempfile
+import time
 import urllib.request
 import wave
+
+WINDOWS = sys.platform == "win32"
+if WINDOWS:
+    import msvcrt
+    import winsound
+else:
+    import select
+    import termios
 
 SAMPLE_RATE        = 16000
 MAX_RECORD_SECONDS = 8
@@ -41,13 +51,40 @@ def post(server, name, path, body=b""):
         return json.loads(resp.read().decode("utf-8"))
 
 
+# =========================================================================
+#  KEYBOARD  (different on Windows and macOS/Linux)
+# =========================================================================
+
 def flush_keys():
     """Throw away any Enter presses typed while we weren't waiting for one."""
+    if WINDOWS:
+        while msvcrt.kbhit():
+            msvcrt.getwch()
+        return
     try:
         termios.tcflush(sys.stdin, termios.TCIFLUSH)
     except (termios.error, ValueError):
         pass    # stdin isn't a terminal
 
+
+def wait_for_enter(timeout):
+    """Wait up to *timeout* seconds for Enter.  Returns True if it was pressed."""
+    if WINDOWS:
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if msvcrt.kbhit() and msvcrt.getwch() in ("\r", "\n"):
+                return True
+            time.sleep(0.02)
+        return False
+    ready, _, _ = select.select([sys.stdin], [], [], timeout)
+    if ready:
+        sys.stdin.readline()
+    return bool(ready)
+
+
+# =========================================================================
+#  AUDIO
+# =========================================================================
 
 def record():
     """Record from the mic until Enter is pressed (or MAX_RECORD_SECONDS).
@@ -60,10 +97,7 @@ def record():
     with sd.RawInputStream(samplerate=SAMPLE_RATE, channels=1, dtype="int16",
                            callback=lambda data, frames, t, status: chunks.append(bytes(data))):
         print("  ● Recording... press Enter to stop.")
-        ready, _, _ = select.select([sys.stdin], [], [], MAX_RECORD_SECONDS)
-        if ready:
-            sys.stdin.readline()
-        else:
+        if not wait_for_enter(MAX_RECORD_SECONDS):
             print("  (stopped after %d seconds)" % MAX_RECORD_SECONDS)
 
     buf = io.BytesIO()
@@ -76,8 +110,37 @@ def record():
     return buf.getvalue(), seconds
 
 
+def play_wav(wav_bytes):
+    """Play WAV audio sent by the server (the personality's voice)."""
+    if WINDOWS:
+        winsound.PlaySound(wav_bytes, winsound.SND_MEMORY)
+        return
+    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+        f.write(wav_bytes)
+    try:
+        player = ["afplay"] if sys.platform == "darwin" else ["aplay", "-q"]
+        subprocess.call(player + [f.name])
+    finally:
+        os.remove(f.name)
+
+
 def say(text):
-    subprocess.call(["say", text])
+    """Speak *text* with this computer's own voice (stands in for the Pi's Classic voice)."""
+    try:
+        if sys.platform == "darwin":
+            subprocess.call(["say", text])
+        elif WINDOWS:
+            # Built-in Windows speech, text passed on stdin so quotes can't break it
+            subprocess.run(
+                ["powershell", "-NoProfile", "-Command",
+                 "Add-Type -AssemblyName System.Speech; "
+                 "(New-Object System.Speech.Synthesis.SpeechSynthesizer).Speak([Console]::In.ReadToEnd())"],
+                input=text, text=True,
+            )
+        else:
+            subprocess.call(["espeak", text])
+    except OSError:
+        pass    # No speech available — the text is printed anyway
 
 
 def handle(result):
@@ -98,8 +161,12 @@ def handle(result):
         say("On the Pi, I would %s now." % command.replace("_", " "))
         return True
 
-    print("Bot: %s" % result.get("reply"))
-    say(result.get("reply") or "Something went wrong.")
+    reply = result.get("reply") or "Something went wrong."
+    print("Bot: %s" % reply)
+    if result.get("audio"):
+        play_wav(base64.b64decode(result["audio"]))
+    else:
+        say(reply)
     return True
 
 

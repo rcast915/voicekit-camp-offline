@@ -640,9 +640,11 @@
     try {
       const res = await fetch("/api/voices");
       if (!res.ok) throw new Error("old server");
-      voiceList = (await res.json()).voices || [];
-      voicesMissing = voiceList.length ? "" :
-        "No voices found on this computer, so only Classic is available.";
+      const data = await res.json();
+      voiceList = data.voices || [];
+      voicesMissing = voiceList.length ? "" : data.platform === "darwin"
+        ? "No voices found on this computer, so only Classic is available."
+        : "Character voices need a Mac. On this computer every Voice Kit speaks with Classic, its own built-in voice.";
     } catch (err) {
       voiceList = [];
       voicesMissing = "Voices need the latest server.py: restart it (Ctrl+C, then run it again) and refresh this page.";

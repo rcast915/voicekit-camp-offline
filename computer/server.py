@@ -39,6 +39,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import textwrap
 import threading
@@ -69,6 +70,7 @@ MAX_HISTORY_TURNS = 10              # Question/answer pairs remembered per Pi
 # --- Voices ------------------------------------------------------------
 #  "classic" = the Pi's own built-in voice.  Anything else is a macOS voice
 #  name (see `say -v ?`); the computer renders the reply and sends the audio.
+#  On Windows/Linux there is no `say`, so every kit uses classic.
 CLASSIC_VOICE     = "classic"
 DEFAULT_VOICE     = {"voice": CLASSIC_VOICE, "rate": 175}
 VOICE_SAMPLE_RATE = 22050
@@ -487,7 +489,8 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if method == "GET" and self.path == "/api/voices":
-            self._send_json({"voices": list_voices(), "classic": CLASSIC_VOICE})
+            self._send_json({"voices": list_voices(), "classic": CLASSIC_VOICE,
+                             "platform": sys.platform})
             return
 
         try:
